@@ -53,6 +53,12 @@ grep -v "Failed password" integration/backend/sample/auth.log > t.tmp && mv t.tm
 
 # 6. cek lagi -> harus 🔴 TAMPERED + event TamperingDetected
 node integration/backend/logCollector.js watch integration/backend/sample/auth.log "auth.log#2026-10-09" 5 1
+
+# 7. tiru penyerang MENGHAPUS file log (skenario paling umum: buang jejak)
+rm integration/backend/sample/auth.log
+node integration/backend/logCollector.js watch integration/backend/sample/auth.log "auth.log#2026-10-09" 5 1
+#    → harus 🔴 FILE LOG HILANG + event TamperingDetected dengan
+#      hash SERVER = 0x__LOG_FILE_MISSING__
 ```
 
 Untuk dashboard-nya (butuh MetaMask):
@@ -93,6 +99,7 @@ Contoh `logId` yang rapi (biar bisa di-*rotate* harian):
 
 ```
 1. hash = SHA-256(file log)                   ← crypto bawaan Node
+   (kalau file-nya sudah HILANG -> hash = "0x__LOG_FILE_MISSING__", bukan crash)
 2. verifyLogIntegrityView(logId, hash)        ← VIEW, GRATIS, tidak butuh gas
    ├─ true  → log aman, lanjut tidur
    └─ false → 3
@@ -100,6 +107,16 @@ Contoh `logId` yang rapi (biar bisa di-*rotate* harian):
    → kontrak set isTampered = true
    → memancarkan event TamperingDetected  ← ini yang ditangkap dashboard Joseph
 ```
+
+**Dua skenario penyerangan sudah diuji dan dua-duanya kena alarm:**
+
+| Skenario | hash yang dikirim | Hasil |
+|---|---|---|
+| Isi log diubah (mis. baris dihapus) | hash baru yang berbeda | 🔴 TAMPERED |
+| File log dihapus total | `0x__LOG_FILE_MISSING__` | 🔴 FILE LOG HILANG |
+
+Kalau file log dihapus, skrip **tidak crash** — penghapusan diperlakukan sebagai
+tampering, karena menghapus jejak justru serangan yang paling sering dipakai.
 
 Kenapa dicek dua langkah? Supaya gas tidak terbuang tiap interval. Transaksi
 berbayar hanya dikirim saat benar-benar ada tampering.

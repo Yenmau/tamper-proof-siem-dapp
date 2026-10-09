@@ -236,9 +236,10 @@ node integration/backend/logCollector.js record integration/backend/sample/auth.
 node integration/backend/logCollector.js watch  integration/backend/sample/auth.log "auth.log#2026-10-09" 5 1
 ```
 
-Alur lengkap yang sudah diuji end-to-end: `record` → `watch` (🟢 AMAN) →
-file log diubah → `watch` lagi (🔴 TAMPERED + event `TamperingDetected`
-terbaca `logId`-nya) → `isTampered` jadi `true` on-chain.
+Alur lengkap yang sudah diuji end-to-end di node lokal: `record` → `watch`
+(🟢 AMAN) → isi file log diubah → `watch` (🔴 TAMPERED) → file log dihapus →
+`watch` (🔴 FILE LOG HILANG) — keduanya memancarkan event `TamperingDetected`
+dengan `logId` yang terbaca, dan `isTampered` menjadi `true` on-chain.
 
 ---
 

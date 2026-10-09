@@ -70,6 +70,19 @@ function sha256File(filePath) {
   return "0x" + crypto.createHash("sha256").update(buf).digest("hex");
 }
 
+/** Penanda kalau file log sudah tidak ada lagi (dihapus penyerang). */
+const HASH_FILE_MISSING = "0x__LOG_FILE_MISSING__";
+
+/**
+ * Hash file log saat ini. Kalau file-nya HILANG, kembalikan penanda khusus
+ * alih-alih crash — supaya penghapusan file tetap terdeteksi sebagai
+ * tampering (justru ini serangan yang paling sering dipakai: buang jejaknya).
+ */
+function currentHashOf(filePath) {
+  if (!fs.existsSync(filePath)) return HASH_FILE_MISSING;
+  return sha256File(filePath);
+}
+
 function short(h) {
   return typeof h === "string" && h.length > 18 ? h.slice(0, 10) + "…" + h.slice(-6) : String(h);
 }
@@ -165,7 +178,8 @@ async function cmdWatch(logFile, logId, intervalSec, maxIter) {
 
   const tick = async () => {
     iteration++;
-    const currentHash = sha256File(logFile);
+    const currentHash = currentHashOf(logFile);
+    const fileMissing = currentHash === HASH_FILE_MISSING;
 
     // 1) Cek GRATIS dulu (view, tidak menulis state, tidak butuh gas)
     let isMatch;
@@ -184,8 +198,13 @@ async function cmdWatch(logFile, logId, intervalSec, maxIter) {
 
     // 2) TIDAK cocok -> kirim transaksi supaya alarm tercatat on-chain
     tamperCount++;
-    console.log(`[${stamp}] #${iteration} 🔴 TAMPERED! hash server ${short(currentHash)} ≠ hash on-chain`);
-    console.log("            → mengirim transaksi verifyLogIntegrity untuk memicu event TamperingDetected…");
+    if (fileMissing) {
+      console.log(`[${stamp}] #${iteration} 🔴 FILE LOG HILANG! ${logFile} sudah tidak ada di server`);
+      console.log("            → penghapusan log = tampering. Mengirim transaksi verifyLogIntegrity…");
+    } else {
+      console.log(`[${stamp}] #${iteration} 🔴 TAMPERED! hash server ${short(currentHash)} ≠ hash on-chain`);
+      console.log("            → mengirim transaksi verifyLogIntegrity untuk memicu event TamperingDetected…");
+    }
     try {
       const tx = await contract.verifyLogIntegrity(logId, currentHash);
       const rc = await tx.wait();
