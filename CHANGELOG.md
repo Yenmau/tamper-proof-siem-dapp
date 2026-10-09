@@ -6,6 +6,73 @@ Semua perubahan penting pada smart contract. Format mengikuti
 
 ---
 
+## [3.0.0] — 2026-10-09
+
+**Sifat rilis: backward compatible untuk 3 fungsi inti.**
+
+Menambahkan **RBAC 3 role** sesuai pembagian tugas tim
+(`Admin`, `SOC Analyst`, `Auditor`). Sebelumnya hanya ada satu level akses
+(admin tunggal), sehingga syarat "mengatur akses otorisasi 3 role" di brief
+belum terpenuhi.
+
+### Matriks izin
+
+| Role | Nilai enum | Tulis log (`recordLogHash`) | Verifikasi + alarm (`verifyLogIntegrity`) | Verifikasi gratis (`verifyLogIntegrityView`) | Kelola role |
+|---|---|---|---|---|---|
+| `ADMIN` | 3 | ✅ | ✅ | ✅ | ✅ |
+| `SOC_ANALYST` | 2 | ✅ | ✅ | ✅ | ❌ |
+| `AUDITOR` | 1 | ❌ | ❌ | ✅ | ❌ |
+| `NONE` (publik) | 0 | ❌ | ❌ | ✅ (baca publik) | ❌ |
+
+**Alasan `AUDITOR` sengaja read-only** — prinsip *separation of duties*:
+auditor tidak boleh punya kemampuan mengubah data yang dia audit, karena
+hasil auditnya jadi tidak bernilai kalau dia sendiri bisa menulis/menghapus.
+Auditor tetap bisa membuktikan integritas sendiri lewat
+`verifyLogIntegrityView` (view, 0 gas).
+
+### Added
+
+- `enum Role { NONE, AUDITOR, SOC_ANALYST, ADMIN }` + `mapping(address => Role) public roles`.
+- `setRole(address, Role)` — set role generik (hanya ADMIN).
+- `removeRole(address)` — cabut akses tulis (kembali `NONE`).
+- Shortcut: `addAnalyst(address)`, `addAuditor(address)`.
+- Query: `getRoleName(address)` → `"ADMIN"` / `"SOC_ANALYST"` / `"AUDITOR"` / `"NONE"`,
+  `isOperator(address)`, `hasRole(address)`.
+- Event `RoleAssigned(address, Role)` dan `RoleRevoked(address, Role)`.
+- Modifier baru `onlyOperator` (SOC_ANALYST atau ADMIN).
+
+### Changed
+
+- `addAdmin` / `removeAdmin` (dari v2.0) **tetap ada**, sekarang hanya alias
+  dari `setRole(account, ADMIN)` / `removeRole(account)`.
+- `isAdmin(address)` diubah dari *public mapping* menjadi *view function*.
+  **ABI-nya identik** (selector & return type sama), jadi pemanggil tidak
+  terpengaruh.
+- `recordLogHash`, `recordLogHashBatch`, `verifyLogIntegrity` sekarang memakai
+  modifier `onlyOperator` (sebelumnya `onlyAdmin`). Artinya **SOC_ANALYST juga
+  bisa menulis log** — sesuai perannya sebagai operator harian.
+- Role management (`setRole`, `removeRole`, `add*`, `removeAdmin`) sekarang
+  butuh role `ADMIN` (sebelumnya `onlyOwner`). Owner otomatis ADMIN, dan owner
+  sendiri **tidak bisa** diubah/dicabut (`CannotChangeOwner`).
+- Error baru: `NotOperator`, `InvalidRole`, `SameRole(account, role)`,
+  `CannotChangeOwner`. `AlreadyAdmin` dihapus (digantikan `SameRole`).
+
+### Gas (diukur dari `npm test`, Solidity 0.8.26, optimizer runs 200, evm paris)
+
+| Operasi | Gas |
+|---|---|
+| `recordLogHash` — 1 log, 1 transaksi | **208.269** |
+| `recordLogHashBatch` — 5 log, 1 transaksi | **843.179** (≈ **168.635 / log**) |
+| `verifyLogIntegrity` — hash cocok | **45.247** |
+| `verifyLogIntegrityView` — hash cocok | **0** (view, gratis) |
+| Bytecode hasil compile | 8.924 byte |
+
+> Penambahan RBAC (mapping role + pengecekan modifier) hanya menambah
+> **±135 gas** per pemanggilan tulis dibanding v2.0 — jauh lebih murah daripada
+> biaya yang dihemat oleh optimasi v2.0 (±39.530 gas/log dari batch).
+
+---
+
 ## [2.0.0] — 2026-10-09
 
 **Sifat rilis: backward compatible (superset).**

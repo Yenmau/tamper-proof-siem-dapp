@@ -1,6 +1,6 @@
 {
   "name": "tamper-proof-siem-dapp",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "description": "Tamper-Proof SIEM dApp — SIEMLogger smart contract (Solidity)",
   "scripts": {

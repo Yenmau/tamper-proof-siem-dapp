@@ -157,7 +157,41 @@ Supaya sumber kode bisa dibaca publik:
 
 ---
 
-## 7. Serahkan ke tim — APA yang dikirim
+## 7. Set role untuk akun tim (RBAC 3 role)
+
+Kontrak membatasi akses berdasarkan role. Setelah deploy, **akun yang deploy
+(owner) otomatis jadi `ADMIN`**. Akun lain belum punya akses apa pun.
+
+Di Remix, buka **Deployed Contracts → SIEMLogger** lalu pakai fungsi berikut
+(semua transaksi ini harus dikirim dari akun owner):
+
+| Tujuan | Fungsi di Remix | Nilai |
+|---|---|---|
+| Akun server Yasin boleh menulis log | `addAnalyst` | `0x<alamat MetaMask Yasin>` |
+| Auditor boleh membaca & audit | `addAuditor` | `0x<alamat auditor>` |
+| Naikkan jadi admin penuh | `addAdmin` | `0x<alamat>` |
+| Cabut seluruh akses tulis | `removeRole` | `0x<alamat>` |
+
+Cek hasilnya: `getRoleName(0x<alamat>)` → harus mengembalikan
+`"ADMIN"` / `"SOC_ANALYST"` / `"AUDITOR"` / `"NONE"`.
+
+Matriks izin:
+
+```
+Role          tulis log   verify(+alarm)   verify view (gratis)   kelola role
+ADMIN             ✅            ✅                 ✅                  ✅
+SOC_ANALYST       ✅            ✅                 ✅                  ❌
+AUDITOR           ❌            ❌                 ✅                  ❌
+NONE / publik     ❌            ❌                 ✅                  ❌
+```
+
+> 💡 Praktisnya: Yasin kirim transaksi dari akun yang sudah di-`addAnalyst`.
+> Kalau Yasin belum punya akun khusus, pakai `addAdmin` ke akun MetaMask Yasin
+> dulu supaya dia bisa langsung kerja; perbaiki rolenya di akhir proyek.
+
+---
+
+## 8. Serahkan ke tim — APA yang dikirim
 
 Isi [`deployments.json`](deployments.json) di root repo (sumber tunggal alamat
 kontrak), lalu bagikan 3 hal ini ke grup:
@@ -177,8 +211,8 @@ Yang perlu Yasin lakukan di skripnya:
 - `recordLogHash(logId, sha256(logFile))` saat log baru pertama kali dicatat.
 - `verifyLogIntegrity(logId, sha256(logFile))` → kalau `return false`,
   artinya **log sudah diubah/dihapus** → kirim alert.
-- Kalau Yasin mau akun server terpisah: minta Vincent
-  `addAdmin(<alamat akun server>)` dulu.
+- **Role akun Yasin** harus sudah di-set dulu (langkah 7): `addAnalyst(<alamat
+  akun server>)` supaya dia boleh `recordLogHash` / `verifyLogIntegrity`.
 
 ### 📤 Ke Joseph (Frontend dApp)
 
@@ -204,11 +238,13 @@ Yang perlu Joseph lakukan di UI:
 
 ---
 
-## 8. Kalau ada masalah
+## 9. Kalau ada masalah
 
 | Gejala | Penyebab & solusi |
 |---|---|
-| `NotAdmin` waktu `recordLogHash` | akun MetaMask yang connect bukan admin. Tambah admin lewat `addAdmin` (dari akun deployer), atau pakai akun deployer. |
+| `NotAdmin` waktu kelola role / `NotOperator` waktu `recordLogHash` | akun MetaMask yang connect rolenya kurang. `NotOperator` = perlu `SOC_ANALYST` atau `ADMIN`; `NotAdmin` = perlu `ADMIN` (untuk kelola role). Minta owner memanggil `addAnalyst` / `addAdmin`. |
+| `CannotChangeOwner` | kamu mencoba mengubah/mencabut role akun owner. Owner memang tidak bisa dicabut — pakai akun lain. |
+| `SameRole` | role yang kamu set sama dengan role sekarang, atau `removeRole` pada akun yang sudah `NONE`. |
 | `LogAlreadyExists` | logId itu sudah pernah didaftarkan. logId bersifat *immutable* — pakai logId baru (mis. `auth.log#2026-10-09`). |
 | `LogNotFound` | logId belum pernah didaftarkan. Panggil `recordLogHash` dulu. |
 | Deploy jalan terus tapi saldo 0 | faucet belum masuk, atau masih di network Mainnet. Cek network MetaMask. |
@@ -218,7 +254,7 @@ Yang perlu Joseph lakukan di UI:
 
 ---
 
-## 9. Setelah mainnet? (opsional, untuk cerita laporan)
+## 10. Setelah mainnet? (opsional, untuk cerita laporan)
 
 Alur deploy-nya sama, hanya network-nya diganti ke Ethereum Mainnet / Polygon.
 Kontrak yang sama bisa dipakai, tapi **gas jadi uang nyata** — di situ argumen
