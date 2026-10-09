@@ -1,0 +1,128 @@
+# CHANGELOG — `contracts/SIEMLogger.sol`
+
+Semua perubahan penting pada smart contract. Format mengikuti
+[Keep a Changelog](https://keepachangelog.com/), versi mengikuti
+[SemVer](https://semver.org/).
+
+---
+
+## [2.0.0] — 2026-10-09
+
+**Sifat rilis: backward compatible (superset).**
+Tiga fungsi inti v1.0 **tidak berubah nama maupun signature-nya**, jadi kode
+Yasin (backend) dan Joseph (frontend) yang sudah dibuat berdasarkan v1.0 tetap
+jalan tanpa diubah.
+
+| Fungsi inti | Signature v1.0 | Signature v2.0 | Berubah? |
+|---|---|---|---|
+| `recordLogHash` | `(string,string)` | `(string,string)` | tidak |
+| `verifyLogIntegrity` | `(string,string) returns (bool)` | sama | tidak |
+| `getLogStatus` | `(string) view returns (string,uint256,bool)` | sama | tidak |
+
+### Security
+
+- **FIX — `verifyLogIntegrity` sekarang `onlyAdmin`.**
+  Di v1.0 fungsi ini bisa dipanggil siapa saja dan langsung menulis
+  `isTampered = true` kalau hash-nya beda. Akibatnya orang luar bisa
+  **mengirim hash ngawur untuk memicu alarm palsu** (false alarm) dan
+  mencemari status log — flag `isTampered` tidak bisa dibalik ke `false`.
+  Sekarang hanya admin yang boleh menulis status tamper.
+- **NEW — `verifyLogIntegrityView(logId, hash)`**: versi `view` (gratis, tanpa
+  gas, tanpa ubah state) untuk pengecekan rutin. Ini jalur yang dipakai
+  frontend untuk badge status, dan backend untuk polling sebelum memutuskan
+  apakah perlu kirim transaksi alarm.
+- **NEW — proteksi owner**: `admin` (akun deployer) tidak bisa dicabut lewat
+  `removeAdmin` → mencegah skenario "kehilangan semua admin".
+- **NEW — validasi**: hash kosong ditolak (`EmptyHash`), `address(0)` ditolak
+  (`InvalidAddress`), panjang array batch harus sama (`LengthMismatch`).
+
+### Added
+
+- **Multi-admin** (permintaan fitur v2.0 di brief):
+  `isAdmin(address)`, `adminCount()`, `addAdmin(address)`,
+  `removeAdmin(address)`, `getAdmins()`.
+  Berguna supaya server backend punya akun adminnya sendiri tanpa harus
+  memakai akun pribadi Vincent.
+  - `admin` = owner/deployer → hanya dia yang bisa tambah/hapus admin.
+  - `onlyAdmin` sekarang cek `isAdmin[msg.sender]`, bukan `msg.sender == admin`.
+- **`recordLogHashBatch(string[] ids, string[] hashes)`** — impor banyak log
+  dalam 1 transaksi → biaya dasar transaksi (±21k gas) dibagi ke semua item.
+- **`getLogEntry(logId)`** — ambil seluruh field sekaligus
+  `(logHash, timestamp, verifiedAt, isTampered, recordedBy)`.
+- **`getLogCount()`, `getLogIds()`, `getLogIdAt(i)`** — supaya UI bisa
+  menampilkan daftar seluruh log tanpa perlu indexer.
+- **Event baru** (additive — listener lama tidak terganggu):
+  - `LogVerified(logId, currentHash, isMatch, timestamp)` → frontend dapat
+    konfirmasi positif, bukan cuma alarm.
+  - `AdminAdded(account)`, `AdminRemoved(account)`.
+- **Field baru di struct `LogEntry`**:
+  `verifiedAt (uint64)` dan `recordedBy (address)`.
+- **`VERSION`** — konstanta string `"2.0.0"`, bisa ditampilkan di UI.
+- **Custom error** menggantikan `require` dengan string.
+
+### Changed (perlu diketahui tim)
+
+- **Nama kontrak: `SIEM` → `SIEMLogger`** (mengikuti nama file & brief).
+  Ini **tidak mengubah ABI** — hanya nama yang muncul di Remix.
+- **Getter publik `logs(logId)` sekarang mengembalikan 5 nilai**:
+  `(string, uint256, uint64, bool, address)` — sebelumnya 3.
+  Kalau mau 3 nilai seperti dulu, pakai `getLogStatus(logId)`.
+- **Pesan error berubah bentuk**: dari `require` + string
+  (`"Log ID sudah terdaftar!"`) menjadi **custom error**
+  (`LogAlreadyExists(logId)`). Di ethers v6, tangkap lewat
+  `err.revert.name` / `contract.interface.parseError(err.data)`.
+- **`recordLogHash` dkk. sekarang `external` + parameter `calldata`**
+  (dulu `public` + `memory`). Selector / ABI **sama**, hanya lebih hemat gas.
+- **Pengecekan `verifyLogIntegrity` butuh akun admin** — Yasin harus mengirim
+  transaksi dari akun yang sudah di-`addAdmin`, bukan akun sembarang.
+
+### Gas (diukur, bukan estimasi)
+
+Hasil `npm test` (Solidity 0.8.26, optimizer runs 200, evm `paris`):
+
+| Operasi | Gas |
+|---|---|
+| `recordLogHash` — 1 log, 1 transaksi | **208.134** |
+| `recordLogHashBatch` — 5 log, 1 transaksi | **843.023** (≈ **168.604 / log**) |
+| `verifyLogIntegrity` — hash cocok | **45.161** |
+| `verifyLogIntegrityView` — hash cocok | **0** (view, gratis) |
+| Hemat dari batch | **≈ 39.530 gas per log** (19%) |
+
+Optimasi yang dipakai:
+1. `calldata` menggantikan `memory` pada parameter eksternal.
+2. Custom error menggantikan string `require` (lebih murah saat revert dan
+   saat deploy karena string tidak disimpan di bytecode).
+3. Paket struct: `verifiedAt (8B) + isTampered (1B) + recordedBy (20B) = 29
+   byte` → masuk **1 slot** storage. Kalau ditulis sebagai field terpisah
+   (uint256 + bool + address) butuh **3 slot**.
+4. `recordLogHashBatch` mengamortisasi biaya dasar transaksi ke banyak log.
+5. Menyediakan jalur `view` gratis supaya polling tidak perlu bayar gas.
+
+> Catatan jujur untuk laporan: porsi gas terbesar tetap berasal dari
+> **penyimpanan string hash on-chain** (string = 1 slot + data). Optimasi
+> berikutnya di v3.0 adalah menyimpan hash sebagai **`bytes32`** (satu setengah
+> slot) — tapi itu akan mengubah ABI, jadi jangan dilakukan di tengah proyek.
+
+### Breaking changes
+
+Tidak ada untuk 3 fungsi inti. Yang berubah hanya:
+1. nama kontrak (`SIEM` → `SIEMLogger`),
+2. tuple getter `logs()` dari 3 → 5 nilai,
+3. bentuk revert (string → custom error),
+4. `verifyLogIntegrity` butuh admin.
+
+---
+
+## [1.0.0] — versi awal
+
+- File `contracts/SIEMLogger.sol` diunggah ke folder `contracts/`.
+- Kontrak `SIEM` dengan `struct LogEntry { string logHash; uint256 timestamp;
+  bool isTampered; }`.
+- `recordLogHash(string _logId, string _logHash)` — `onlyAdmin`, revert kalau
+  logId sudah ada.
+- `verifyLogIntegrity(string _logId, string _currentServerHash) returns (bool)`
+  — membandingkan `keccak256(abi.encodePacked(...))`, menulis
+  `isTampered = true` dan emit `TamperingDetected` kalau beda.
+- `getLogStatus(string _logId) view returns (string, uint256, bool)`.
+- Event: `LogRecorded`, `TamperingDetected`.
+- Admin tunggal = akun deployer.

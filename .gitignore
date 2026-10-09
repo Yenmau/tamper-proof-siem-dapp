@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# hardhat build output (bisa di-generate ulang dengan `npm run compile`)
+artifacts/
+cache/
+typechain-types/
+coverage/
+coverage.json
+
+# environment / secrets
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

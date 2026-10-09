@@ -1,0 +1,19 @@
+{
+  "_note": "Sumber tunggal alamat kontrak. Diisi Vincent setiap kali selesai deploy. Yasin (backend) & Joseph (frontend) baca dari sini.",
+  "11155111": {
+    "network": "sepolia",
+    "contract": "SIEMLogger",
+    "address": "",
+    "deployTxHash": "",
+    "deployedAt": "",
+    "explorer": "https://sepolia.etherscan.io/address/"
+  },
+  "80002": {
+    "network": "polygon-amoy",
+    "contract": "SIEMLogger",
+    "address": "",
+    "deployTxHash": "",
+    "deployedAt": "",
+    "explorer": "https://amoy.polygonscan.com/address/"
+  }
+}

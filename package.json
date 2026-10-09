@@ -1,0 +1,17 @@
+{
+  "name": "tamper-proof-siem-dapp",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Tamper-Proof SIEM dApp — SIEMLogger smart contract (Solidity)",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",
+    "@nomicfoundation/hardhat-ethers": "^3.0.8",
+    "chai": "^4.5.0",
+    "ethers": "^6.13.4",
+    "hardhat": "^2.22.19"
+  }
+}
