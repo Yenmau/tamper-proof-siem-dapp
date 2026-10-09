@@ -33,8 +33,9 @@ hash server tidak akan cocok lagi dengan hash on-chain → event
 | 3 | Fungsi verifikasi integritas | ✅ `verifyLogIntegrity` + `verifyLogIntegrityView` | — |
 | 4 | Otorisasi 3 role (Admin, SOC Analyst, Auditor) | ✅ selesai (v3.0) | lihat [Matriks RBAC](#-rbac--3-role) |
 | 5 | File ABI (JSON) | ✅ 44 entri, hasil compile terverifikasi | [`contracts/SIEMLogger.json`](contracts/SIEMLogger.json) |
-| 6 | Bytecode (bonus) | ✅ 8.924 byte | [`contracts/SIEMLogger.bytecode.txt`](contracts/SIEMLogger.bytecode.txt) |
+| 6 | Bytecode (bonus) | ✅ 8.948 byte | [`contracts/SIEMLogger.bytecode.txt`](contracts/SIEMLogger.bytecode.txt) |
 | 7 | Deploy testnet + Contract Address | ⏳ **menunggu Vincent** | ikuti [`DEPLOY.md`](DEPLOY.md), isi [`deployments.json`](deployments.json) |
+| 8 | Kit integrasi (backend + frontend) | ✅ selesai & diuji end-to-end | [`integration/`](integration/) |
 
 ---
 
@@ -90,6 +91,13 @@ tamper-proof-siem-dapp/
 │   ├── SIEMLogger.sol            ← kode smart contract (v3.0)
 │   ├── SIEMLogger.json           ← ABI untuk Yasin & Joseph
 │   └── SIEMLogger.bytecode.txt   ← bytecode hasil compile
+├── integration/                  ← kit sambung ke backend & frontend
+│   ├── backend/logCollector.js   ← skrip Node.js (Yasin)
+│   ├── backend/.env.example
+│   ├── backend/sample/auth.log   ← log contoh buat uji coba
+│   └── frontend/index.html       ← SOC Dashboard (Joseph)
+├── scripts/
+│   └── deploy.js                 ← deploy tanpa Remix (opsional)
 ├── test/
 │   └── SIEMLogger.test.js        ← 15 test otomatis (RBAC + fungsi inti + gas)
 ├── deployments.json              ← alamat kontrak per network (diisi saat deploy)
@@ -139,6 +147,10 @@ tamper-proof-siem-dapp/
 | `RoleAssigned(account, role)` / `RoleRevoked(account, previousRole)` | saat role diubah | audit |
 | `AdminAdded(account)` / `AdminRemoved(account)` | saat role ADMIN berubah | kompatibilitas v2.0 |
 
+> `logId` pada semua event **tidak di-index** supaya isinya bisa dibaca
+> langsung dari payload event. Kalau di-index, yang tersimpan hanya hash-nya
+> dan dashboard tidak akan tahu log mana yang bermasalah.
+
 ### Error (custom error, bukan string)
 
 `NotOwner`, `NotAdmin`, `NotOperator`, `InvalidAddress`, `InvalidRole`,
@@ -169,15 +181,15 @@ SIEMLogger v3.0
   B. Fungsi inti (kompatibel v1.0)
     ✔ 8. recordLogHash menyimpan hash + getLogStatus mengembalikannya
     ✔ 9. logId tidak bisa didaftarkan dua kali
-         gas verifyLogIntegrity (cocok) = 45247
+        gas verifyLogIntegrity (cocok) = 45701
     ✔ 10. verifyLogIntegrity: hash cocok -> true, TIDAK ada alarm
     ✔ 11. verifyLogIntegrity: HASH DIUBAH -> false + event TamperingDetected
     ✔ 12. verifyLogIntegrityView: gratis, hasil sama, tidak mengubah state
     ✔ 13. logId yang belum terdaftar -> LogNotFound
     ✔ 14. recordLogHashBatch: impor banyak log
-         1 log  (single tx)  = 208269 gas
-         5 log  (1 batch tx) = 843179 gas
-         rata-rata batch     = 168635 gas/log
+        1 log  (single tx)  = 208708 gas
+        5 log  (1 batch tx) = 845333 gas
+        rata-rata batch     = 169066 gas/log
     ✔ 15. gas: batch lebih murah per log daripada single
 
   15 passing
@@ -195,6 +207,38 @@ Ikuti langkah lengkap di **[`DEPLOY.md`](DEPLOY.md)**. Ringkasnya:
 4. Environment → **Injected Provider - MetaMask** → **Deploy**.
 5. Set role akun tim (`addAnalyst` untuk Yasin, dst).
 6. Catat **Contract Address** → isi `deployments.json` → bagikan ke tim.
+
+---
+
+## 🔌 Integration Kit (sambungan ke tim)
+
+Folder [`integration/`](integration/) berisi titik sambung ke Yasin & Joseph.
+Detail lengkap di [`integration/README.md`](integration/README.md).
+
+| Item | Untuk | Isi |
+|---|---|---|
+| [`integration/backend/logCollector.js`](integration/backend/logCollector.js) | Yasin (#2) | Baca file log → SHA-256 → `recordLogHash` / `verifyLogIntegrity`; mendeteksi tampering dan memicu alarm on-chain |
+| [`integration/frontend/index.html`](integration/frontend/index.html) | Joseph (#5) | SOC Dashboard: login MetaMask, tabel status log, banner alarm real-time dari event `TamperingDetected` |
+| [`scripts/deploy.js`](scripts/deploy.js) | semua | Deploy tanpa Remix (buat node lokal) |
+
+**Uji seluruh alur secara lokal (2 terminal, tanpa testnet & tanpa MetaMask):**
+
+```bash
+# terminal 1
+npm install && npx hardhat node
+
+# terminal 2
+npx hardhat run scripts/deploy.js --network localhost
+export RPC_URL=http://127.0.0.1:8545
+export CONTRACT_ADDRESS=<alamat hasil deploy>
+export PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+node integration/backend/logCollector.js record integration/backend/sample/auth.log "auth.log#2026-10-09"
+node integration/backend/logCollector.js watch  integration/backend/sample/auth.log "auth.log#2026-10-09" 5 1
+```
+
+Alur lengkap yang sudah diuji end-to-end: `record` → `watch` (🟢 AMAN) →
+file log diubah → `watch` lagi (🔴 TAMPERED + event `TamperingDetected`
+terbaca `logId`-nya) → `isTampered` jadi `true` on-chain.
 
 ---
 

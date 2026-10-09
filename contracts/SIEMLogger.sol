@@ -83,15 +83,19 @@ contract SIEMLogger {
     // ---------------------------------------------------------------------
 
     /// @notice Dipancarkan tiap kali hash log baru dikunci on-chain.
-    ///         (signature dipertahankan sama seperti v1.0)
-    event LogRecorded(string indexed logId, string logHash, uint256 timestamp);
+    /// @dev    `logId` TIDAK di-index supaya isinya bisa dibaca langsung dari
+    ///         event (indexed string hanya menyimpan hash-nya, tidak bisa
+    ///         di-decode ulang) — penting untuk ditampilkan di dashboard SOC.
+    ///         Biaya gas-nya kecil (data log 8 gas/byte, bukan 20k/slot).
+    event LogRecorded(string logId, string logHash, uint256 timestamp);
 
     /// @notice Dipancarkan tiap kali verifikasi dijalankan (cocok atau tidak).
-    event LogVerified(string indexed logId, string currentHash, bool isMatch, uint256 timestamp);
+    event LogVerified(string logId, string currentHash, bool isMatch, uint256 timestamp);
 
     /// @notice ⚠️ ALARM. Dipancarkan saat hash server != hash on-chain.
-    ///         (signature dipertahankan sama seperti v1.0)
-    event TamperingDetected(string indexed logId, string expectedHash, string actualHash);
+    ///         Ini event yang didengarkan frontend untuk menaikkan alarm.
+    ///         `logId` sengaja tidak di-index agar bisa ditampilkan langsung.
+    event TamperingDetected(string logId, string expectedHash, string actualHash);
 
     /// @notice Perubahan role (v3.0 — menggantikan AdminAdded/AdminRemoved).
     event RoleAssigned(address indexed account, Role role);

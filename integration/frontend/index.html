@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SOC Dashboard — Tamper-Proof SIEM dApp</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<style>
+  body { background:#0b1120; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  @keyframes pulse-red { 0%,100%{opacity:1} 50%{opacity:.45} }
+  .alarm-on { animation: pulse-red 1s infinite; }
+</style>
+</head>
+<body class="text-slate-200 min-h-screen">
+
+<!-- ══════════════ KONFIGURASI ══════════════ -->
+<script>
+  // Isi contractAddress setelah deploy (lihat deployments.json di root repo).
+  // Nilai default di bawah adalah alamat deploy PERTAMA dari `npx hardhat node`
+  // yang masih segar (deterministik) + scripts/deploy.js — supaya contoh lokal
+  // bisa langsung jalan. GANTI kalau kamu deploy sendiri / ke testnet.
+  const CONFIG = {
+    contractAddress: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    expectedChainId: 31337, // 31337=hardhat lokal, 11155111=Sepolia, 80002=Amoy
+    pollSeconds: 15,
+    // ABI di-load otomatis dari contracts/SIEMLogger.json
+  };
+</script>
+
+<header class="border-b border-slate-800 bg-slate-900/60 px-6 py-4 flex items-center gap-4 flex-wrap">
+  <div class="text-2xl">🛡️</div>
+  <div class="mr-auto">
+    <h1 class="text-lg font-semibold text-white">SOC Dashboard</h1>
+    <p class="text-xs text-slate-400">Tamper-Proof SIEM dApp — Log Integrity Monitor</p>
+  </div>
+  <div id="netBadge" class="hidden text-xs px-3 py-1 rounded-full bg-slate-800 text-slate-300 mono"></div>
+  <div id="roleBadge" class="hidden text-xs px-3 py-1 rounded-full bg-slate-800 text-slate-300 mono"></div>
+  <button id="btnConnect"
+    class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg">
+    Connect Wallet
+  </button>
+</header>
+
+<!-- ══════════════ ALARM BANNER ══════════════ -->
+<div id="alarmBanner" class="hidden mx-6 mt-4 rounded-lg border border-red-600 bg-red-950/60 px-5 py-4">
+  <div class="flex items-start gap-3">
+    <div class="text-2xl alarm-on">🚨</div>
+    <div class="flex-1">
+      <div class="font-semibold text-red-300">TAMPERING TERDETEKSI — integritas log rusak!</div>
+      <div id="alarmDetail" class="text-xs text-red-200/90 mono mt-1"></div>
+    </div>
+    <button id="btnDismiss" class="text-red-300 hover:text-white text-xs underline">tutup</button>
+  </div>
+</div>
+
+<!-- ══════════════ STATISTIK ══════════════ -->
+<main class="px-6 py-5">
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-4">
+      <div class="text-xs text-slate-400">Total log tercatat</div>
+      <div id="statTotal" class="text-2xl font-semibold text-white mt-1">–</div>
+    </div>
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-4">
+      <div class="text-xs text-slate-400">Status aman</div>
+      <div id="statSafe" class="text-2xl font-semibold text-emerald-400 mt-1">–</div>
+    </div>
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-4">
+      <div class="text-xs text-slate-400">Terindikasi tampered</div>
+      <div id="statTampered" class="text-2xl font-semibold text-red-400 mt-1">–</div>
+    </div>
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-4">
+      <div class="text-xs text-slate-400">Alarm diterima sesi ini</div>
+      <div id="statAlarms" class="text-2xl font-semibold text-amber-400 mt-1">0</div>
+    </div>
+  </div>
+
+  <!-- ══════════════ TABEL LOG ══════════════ -->
+  <div class="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+    <div class="px-5 py-3 border-b border-slate-800 flex items-center gap-3">
+      <h2 class="font-medium text-white">Registry Log On-Chain</h2>
+      <button id="btnRefresh" class="ml-auto text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded">Refresh</button>
+      <span id="liveDot" class="hidden text-xs text-emerald-400">● live</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-950/60 text-slate-400 text-xs uppercase">
+          <tr>
+            <th class="text-left px-5 py-2">logId</th>
+            <th class="text-left px-5 py-2">Hash on-chain</th>
+            <th class="text-left px-5 py-2">Terdaftar</th>
+            <th class="text-left px-5 py-2">Terakhir dicek</th>
+            <th class="text-left px-5 py-2">Status</th>
+          </tr>
+        </thead>
+        <tbody id="logRows">
+          <tr><td colspan="5" class="px-5 py-8 text-center text-slate-500">Hubungkan wallet untuk memuat data.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══════════════ LOG EVENT ══════════════ -->
+  <div class="mt-5 bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+    <div class="px-5 py-3 border-b border-slate-800">
+      <h2 class="font-medium text-white">Event Stream (real-time)</h2>
+    </div>
+    <div id="eventStream" class="p-4 h-56 overflow-y-auto mono text-xs space-y-1">
+      <div class="text-slate-500">Menunggu event…</div>
+    </div>
+  </div>
+
+  <p class="text-xs text-slate-500 mt-5">
+    Catatan: status di halaman ini dibaca dari <span class="mono">isTampered</span> on-chain.
+    Pengecekan <em>hash server saat ini</em> dilakukan oleh backend (logCollector.js), karena
+    hanya server yang punya file log aslinya.
+  </p>
+</main>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════════════════════════════════
+let provider, signer, account, contract, abi;
+let alarmCount = 0;
+let pollTimer = null;
+
+const $ = (id) => document.getElementById(id);
+
+const ROLE_LABEL = { 3: "ADMIN", 2: "SOC_ANALYST", 1: "AUDITOR", 0: "NONE(guest)" };
+
+function shortAddr(a) { return a ? a.slice(0, 6) + "…" + a.slice(-4) : ""; }
+function shortHash(h) { return h && h.length > 20 ? h.slice(0, 12) + "…" + h.slice(-8) : h; }
+function fmtTime(ts) {
+  if (!ts || ts === 0n || ts === 0) return "—";
+  return new Date(Number(ts) * 1000).toLocaleString("id-ID");
+}
+
+function logEvent(kind, text) {
+  const colors = { ok: "text-emerald-400", bad: "text-red-400", info: "text-slate-400", warn: "text-amber-400" };
+  const el = document.createElement("div");
+  el.className = colors[kind] || "text-slate-300";
+  el.textContent = `[${new Date().toLocaleTimeString("id-ID")}] ${text}`;
+  const stream = $("eventStream");
+  if (stream.firstChild && stream.firstChild.textContent === "Menunggu event…") stream.innerHTML = "";
+  stream.prepend(el);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Load ABI — coba beberapa lokasi supaya jalan dari http.server mana pun
+// ═══════════════════════════════════════════════════════════════════════════
+async function loadAbi() {
+  const candidates = [
+    "../../contracts/SIEMLogger.json",
+    "../contracts/SIEMLogger.json",
+    "/contracts/SIEMLogger.json",
+    "SIEMLogger.json",
+  ];
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        abi = await res.json();
+        logEvent("info", `ABI dimuat dari ${url} (${abi.length} entri)`);
+        return true;
+      }
+    } catch (_) { /* coba berikutnya */ }
+  }
+  logEvent("bad", "Gagal memuat ABI. Pastikan diakses lewat http:// (bukan file://) dan contracts/SIEMLogger.json bisa diakses.");
+  return false;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Connect wallet (login via MetaMask)
+// ═══════════════════════════════════════════════════════════════════════════
+async function connect() {
+  if (!window.ethereum) {
+    alert("MetaMask tidak terdeteksi. Install dulu ekstensi MetaMask.");
+    return;
+  }
+  if (!abi && !(await loadAbi())) return;
+
+  try {
+    provider = new ethers.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    signer = await provider.getSigner();
+    account = await signer.getAddress();
+
+    const net = await provider.getNetwork();
+    $("netBadge").classList.remove("hidden");
+    $("netBadge").textContent = `chain ${net.chainId}`;
+    if (Number(net.chainId) !== CONFIG.expectedChainId) {
+      $("netBadge").className = "text-xs px-3 py-1 rounded-full bg-red-900 text-red-200 mono";
+      logEvent("bad", `Chain tidak sesuai: terhubung ke ${net.chainId}, diharapkan ${CONFIG.expectedChainId}`);
+    }
+
+    contract = new ethers.Contract(CONFIG.contractAddress, abi, provider);
+
+    $("btnConnect").textContent = shortAddr(account);
+    $("btnConnect").className = "bg-slate-700 text-white text-sm font-medium px-4 py-2 rounded-lg mono";
+
+    // tampilkan role akun yang connect
+    try {
+      const r = await contract.roles(account);
+      $("roleBadge").classList.remove("hidden");
+      $("roleBadge").textContent = "role: " + (ROLE_LABEL[Number(r)] || "?");
+    } catch (_) { /* kontrak lama tanpa roles() */ }
+
+    logEvent("ok", `Wallet terhubung: ${account}`);
+    await refresh();
+    startListening();
+    startPolling();
+
+    window.ethereum.on("accountsChanged", () => location.reload());
+    window.ethereum.on("chainChanged", () => location.reload());
+  } catch (e) {
+    logEvent("bad", "Gagal connect: " + (e.shortMessage || e.message));
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Baca registry log dari blockchain
+// ═══════════════════════════════════════════════════════════════════════════
+async function refresh() {
+  if (!contract) return;
+  try {
+    const count = Number(await contract.getLogCount());
+    const rows = [];
+    let safe = 0, tampered = 0;
+
+    for (let i = 0; i < count; i++) {
+      const logId = await contract.getLogIdAt(i);
+      const e = await contract.getLogEntry(logId);
+      const isTampered = e[3];
+      isTampered ? tampered++ : safe++;
+
+      rows.push(`
+        <tr class="border-t border-slate-800 hover:bg-slate-800/40">
+          <td class="px-5 py-2 mono text-slate-200">${escapeHtml(logId)}</td>
+          <td class="px-5 py-2 mono text-slate-400" title="${e[0]}">${shortHash(e[0])}</td>
+          <td class="px-5 py-2 text-slate-400">${fmtTime(e[1])}</td>
+          <td class="px-5 py-2 text-slate-400">${fmtTime(e[2])}</td>
+          <td class="px-5 py-2">
+            ${isTampered
+              ? '<span class="text-xs px-2 py-0.5 rounded bg-red-900 text-red-200">🔴 TAMPERED</span>'
+              : '<span class="text-xs px-2 py-0.5 rounded bg-emerald-900 text-emerald-200">🟢 AMAN</span>'}
+          </td>
+        </tr>`);
+    }
+
+    $("logRows").innerHTML = rows.length
+      ? rows.join("")
+      : '<tr><td colspan="5" class="px-5 py-8 text-center text-slate-500">Belum ada log yang didaftarkan.</td></tr>';
+
+    $("statTotal").textContent = count;
+    $("statSafe").textContent = safe;
+    $("statTampered").textContent = tampered;
+  } catch (e) {
+    logEvent("bad", "Gagal membaca registry: " + (e.shortMessage || e.message));
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ⚠️ INTI FITUR: dengarkan event TamperingDetected secara real-time
+// ═══════════════════════════════════════════════════════════════════════════
+function startListening() {
+  contract.removeAllListeners();
+
+  contract.on("TamperingDetected", (logId, expectedHash, actualHash) => {
+    alarmCount++;
+    $("statAlarms").textContent = alarmCount;
+    $("liveDot").classList.remove("hidden");
+
+    // banner alarm
+    $("alarmBanner").classList.remove("hidden");
+    $("alarmDetail").textContent =
+      `logId: ${logId}  |  hash on-chain: ${expectedHash}  |  hash server: ${actualHash}`;
+
+    logEvent("bad", `🚨 TamperingDetected — ${logId}`);
+
+    // judul tab berkedip, biar kelihatan walau tab-nya di belakang
+    document.title = "🚨 TAMPERED! — SOC Dashboard";
+    setTimeout(() => (document.title = "SOC Dashboard — Tamper-Proof SIEM dApp"), 4000);
+
+    refresh();
+  });
+
+  contract.on("LogRecorded", (logId, logHash, ts) => {
+    logEvent("info", `LogRecorded — ${logId} (${shortHash(logHash)})`);
+    refresh();
+  });
+
+  contract.on("LogVerified", (logId, currentHash, isMatch) => {
+    logEvent(isMatch ? "ok" : "bad", `LogVerified — ${logId} → ${isMatch ? "cocok" : "TIDAK cocok"}`);
+    refresh();
+  });
+
+  $("liveDot").classList.remove("hidden");
+  logEvent("ok", "Mendengarkan event on-chain (TamperingDetected, LogRecorded, LogVerified)…");
+}
+
+// polling cadangan kalau websocket event-nya terlewat
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(refresh, CONFIG.pollSeconds * 1000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Wiring UI
+// ═══════════════════════════════════════════════════════════════════════════
+$("btnConnect").addEventListener("click", connect);
+$("btnRefresh").addEventListener("click", refresh);
+$("btnDismiss").addEventListener("click", () => $("alarmBanner").classList.add("hidden"));
+
+// auto-connect kalau MetaMask sudah pernah izinkan situs ini
+window.addEventListener("load", async () => {
+  await loadAbi();
+  if (window.ethereum && window.ethereum.selectedAddress) connect();
+});
+</script>
+</body>
+</html>

@@ -56,16 +56,27 @@ Auditor tetap bisa membuktikan integritas sendiri lewat
   sendiri **tidak bisa** diubah/dicabut (`CannotChangeOwner`).
 - Error baru: `NotOperator`, `InvalidRole`, `SameRole(account, role)`,
   `CannotChangeOwner`. `AlreadyAdmin` dihapus (digantikan `SameRole`).
+- **Event `LogRecorded`, `LogVerified`, `TamperingDetected`: parameter `logId`
+  tidak lagi `indexed`.** Alasannya: `indexed` pada `string` hanya menyimpan
+  **hash** dari string itu, sehingga isi `logId` **tidak bisa dibaca kembali**
+  dari event. Akibatnya dashboard SOC tidak akan tahu log mana yang di-tamper
+  (bug ini ketemu saat pengujian end-to-end, bukan dari teori).
+  Setelah diperbaiki, frontend bisa langsung membaca
+  `event.args[0] === "auth.log#2026-10-09"`.
+  - Biaya: +≈440 gas saat `recordLogHash` (data log cuma 8 gas/byte, berbeda
+    jauh dari 20k gas/slot storage) — jauh lebih murah daripada manfaatnya.
+  - Trade-off: filter per-`logId` di sisi server (topic filter) digantikan
+    penyaringan di sisi klien. Tidak masalah untuk skala proyek ini.
 
 ### Gas (diukur dari `npm test`, Solidity 0.8.26, optimizer runs 200, evm paris)
 
 | Operasi | Gas |
 |---|---|
-| `recordLogHash` — 1 log, 1 transaksi | **208.269** |
-| `recordLogHashBatch` — 5 log, 1 transaksi | **843.179** (≈ **168.635 / log**) |
-| `verifyLogIntegrity` — hash cocok | **45.247** |
+| `recordLogHash` — 1 log, 1 transaksi | **208.708** |
+| `recordLogHashBatch` — 5 log, 1 transaksi | **845.333** (≈ **169.066 / log**) |
+| `verifyLogIntegrity` — hash cocok | **45.701** |
 | `verifyLogIntegrityView` — hash cocok | **0** (view, gratis) |
-| Bytecode hasil compile | 8.924 byte |
+| Bytecode hasil compile | 8.948 byte |
 
 > Penambahan RBAC (mapping role + pengecekan modifier) hanya menambah
 > **±135 gas** per pemanggilan tulis dibanding v2.0 — jauh lebih murah daripada

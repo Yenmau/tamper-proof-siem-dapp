@@ -1,0 +1,6 @@
+# File log contoh dipakai untuk uji hashing (SHA-256) — JANGAN biarkan Git
+# mengubah line ending-nya, karena itu mengubah hash file.
+*.log -text
+
+# Bytecode kontrak: harus byte-for-byte sama dengan hasil compile.
+*.bytecode.txt -text
