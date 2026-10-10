@@ -2,7 +2,7 @@
 
 Catatan pribadi Vincent. Scope: **hanya** point 1. Ini bukan dokumen tim.
 
-Terakhir diperbarui: 2026-10-10 · commit `a384439`
+Terakhir diperbarui: 2026-10-10 (sesi 2)
 
 ---
 
@@ -52,24 +52,26 @@ Prosedur lengkap (untuk Amoy atau re-deploy) tetap ada di **[DEPLOY.md](DEPLOY.m
 > Catatan gas: deploy menghabiskan **14,16 juta gas** (~0,022 ETH) — jauh di atas normal
 > (~2 juta). Tidak merusak apa pun, tapi layak ditelusuri kalau mau dibahas di laporan.
 
-### Langkah C — Set role akun tim (ini on-chain, tetap scope kamu)
+### Langkah C — Set role akun tim (sebagian ✅)
 
-Dari Remix, pakai fungsi di **Deployed Contracts** (kirim dari akun deployer):
+Dari Remix, fungsi di **Deployed Contracts** (dikirim dari akun deployer/owner):
 
-| Fungsi | Isi | Untuk siapa |
-|---|---|---|
-| `addAnalyst(address)` | alamat akun Yasin | #2 — biar boleh tulis & verifikasi log |
-| `addAuditor(address)` | alamat akun auditor | #6 — read-only |
-| `addAdmin(address)` | alamat (opsional) | admin penuh |
+| Akun | Alamat | Role | Status |
+|---|---|---|---|
+| Vincent (owner) | `0x6BBd8F8c13dF812fbDEB6E13145E82F7c74e9297` | ADMIN | ✅ otomatis saat deploy |
+| Yasin (#2) | `0x78ab74A8d8AA1490ECB3F806fE1e25f40DcF88a0` | SOC_ANALYST | ✅ terpasang (blok 11885571) |
+| Nat (#6) | — | AUDITOR | ⏳ menunggu alamat |
 
-Cek pakai `getRoleName(address)` → harus balikin `"ADMIN"` / `"SOC_ANALYST"` / `"AUDITOR"` / `"NONE"`.
+Fungsi: `addAnalyst` / `addAuditor` / `addAdmin` / `setRole` / `removeRole` (butuh ADMIN).
+Cek pakai `getRoleName(address)` → `"ADMIN"` / `"SOC_ANALYST"` / `"AUDITOR"` / `"NONE"`.
 
-### Langkah D — Serahkan ke tim
+### Langkah D — Serahkan ke tim ✅
 
 - **Ke Yasin (#2):** Contract Address, network + chainId, RPC URL, file `contracts/SIEMLogger.json` (ABI), plus info bahwa akunnya sudah di-`addAnalyst`.
 - **Ke Joseph (#5):** Contract Address, chainId, ABI, nama event `TamperingDetected`.
 
 Setelah A–D selesai → **point 1 kamu 100%.**
+Status: A, B, D ✅ — C tinggal role Nat. Dokumen serah terima resmi ada di **[HANDOVER.md](HANDOVER.md)**.
 
 ### ✅ Keputusan: dibiarkan
 
@@ -140,12 +142,30 @@ Semua ada alasannya di [CHANGELOG.md](CHANGELOG.md).
 | `9a3b706` | fix: hapus file log harus memicu alarm |
 | `cebda6c` | docs: PROGRESS.md + sisa pekerjaan point 1 |
 | `a384439` | chore: contract address testnet sepolia |
+| `bdde55e` | docs: tandai deploy selesai + HANDOVER.md |
+| `339fd33` | docs(handover): status role on-chain (Yasin = SOC_ANALYST) |
+| `be80371` | README: isi nama tim (#3 Rafif, #4 Michael, #6 Nat) |
+| `26fb613` | docs(handover): alur kontribusi branch + PR |
+| `cee32cc` | PR #1: prasyarat collaborator + alur git lengkap |
 
 Repo: https://github.com/Yenmau/tamper-proof-siem-dapp
 
 ---
 
-## 5. Jangan lakukan ini
+## 5. Infrastruktur repo & status tim
+
+| Item | Status |
+|---|---|
+| Branch `main` | ✅ dilindungi ruleset `protect-main` (id 24845134): wajib PR, blok force-push, blok delete |
+| Secret scanning + push protection | ✅ aktif |
+| Collaborator | ✅ Hyphen-14 (write) · ⏳ Rafif1299 (pending) · ❌ 3 orang belum diundang |
+| Alur kerja tim | branch → PR → Vincent merge (detail: [HANDOVER.md](HANDOVER.md) bagian 6) |
+
+Karena `main` terkunci, semua perubahan — termasuk punyamu — lewat **branch + PR**, bukan push langsung.
+
+---
+
+## 6. Jangan lakukan ini
 
 - ❌ Mengerjakan backend Merkle Tree / DB → itu #2 Yasin
 - ❌ Mengerjakan dashboard/React → itu #5 Joseph
