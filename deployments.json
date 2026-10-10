@@ -3,9 +3,9 @@
   "11155111": {
     "network": "sepolia",
     "contract": "SIEMLogger",
-    "address": "",
-    "deployTxHash": "",
-    "deployedAt": "",
+    "address": "0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd",
+    "deployTxHash": "0x71a20cefe683532fbb4b8abbd184af83bf584c7b7cbbff16e8fcd1b95704eba2",
+    "deployedAt": "2026-10-10T22:30:12+07:00",
     "explorer": "https://sepolia.etherscan.io/address/"
   },
   "80002": {
