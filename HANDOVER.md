@@ -48,10 +48,17 @@ dan gratis (0 gas). Tidak ada fungsi tulis yang dipanggil dari frontend.
 
 ---
 
-## 3. Yang masih pending (dari sisi #1)
+## 3. Status role (on-chain)
 
-- [ ] Set role: `addAnalyst(<alamat Yasin>)` → `SOC_ANALYST`
-- [ ] Set role: `addAuditor(<alamat #6 auditor>)` → `AUDITOR`
+| Akun | Alamat publik | Role | Status |
+|---|---|---|---|
+| Vincent (#1, owner/deployer) | `0x6BBd8F8c13dF812fbDEB6E13145E82F7c74e9297` | ADMIN | ✅ otomatis saat deploy |
+| Yasin (#2, backend) | `0x78ab74A8d8AA1490ECB3F806fE1e25f40DcF88a0` | SOC_ANALYST | ✅ terpasang (blok 11885571) |
+| Nat (#6, auditor) | — | AUDITOR | ⏳ menunggu alamat |
+
+Yang masih pending:
+
+- [ ] `addAuditor(<alamat Nat>)` → `AUDITOR`
 - [ ] (opsional) Verifikasi kontrak di Etherscan agar bisa dibaca/ditulis dari explorer
 
 Cara minta role: kirim **alamat publik** ke Vincent — format `0x...` (42 karakter),
