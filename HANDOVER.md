@@ -113,7 +113,36 @@ Detail lengkap: [`integration/README.md`](integration/README.md).
 
 ---
 
-## 6. Yang JANGAN dilakukan
+## 6. Cara berkontribusi (alur Git & branch)
+
+`main` **dilindungi** — tidak ada yang boleh push langsung ke sana. Semua perubahan lewat
+**branch + Pull Request**. Ini supaya kesalahan di branch tidak merusak `main`.
+
+```bash
+git clone https://github.com/Yenmau/tamper-proof-siem-dapp.git
+cd tamper-proof-siem-dapp
+git checkout -b feat/<nama-pekerjaan>
+# ...kerja & commit...
+git push -u origin feat/<nama-pekerjaan>
+```
+
+Lalu buka **Pull Request** ke `main` di GitHub — minta Vincent review & merge.
+
+Aturan main:
+
+- Satu branch = satu pekerjaan (jangan campur backend + frontend dalam satu branch).
+- Jangan push langsung ke `main` (diblokir otomatis oleh ruleset).
+- Vincent (#1) yang merge ke `main`.
+- Lakukan `git pull origin main` dulu sebelum mulai, biar branch-nya tidak basi.
+
+Branch yang disarankan:
+
+| Orang | Branch | Isi |
+|---|---|---|
+| Yasin (#2, backend) | `feat/backend-logcollector` | `integration/backend/` |
+| Joseph (#5, frontend) | `feat/frontend-dashboard` | `integration/frontend/` |
+
+## 7. Yang JANGAN dilakukan
 
 - ❌ Mengubah signature 3 fungsi inti (`recordLogHash`, `verifyLogIntegrity`, `getLogStatus`) —
   dokumen backend & frontend sudah mengacu ke situ.
