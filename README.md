@@ -17,10 +17,10 @@ hash server tidak akan cocok lagi dengan hash on-chain → event
 |---|---|---|---|
 | 1 | **Smart Contract Developer / Web3 Lead** | **Vincent** | `contracts/SIEMLogger.sol`, RBAC 3 role, ABI, deploy testnet |
 | 2 | Cryptographic & Backend Engineer | Yasin | skrip pemroses log (SHA-256 / Merkle Tree), koneksi DB off-chain |
-| 3 | System & Infrastructure (DevOps) | — | server Linux (VM/Docker), syslog/rsyslog, daemon pengirim log |
-| 4 | Red Team & Exploit Specialist | — | skenario serangan (brute force SSH), skrip manipulasi log, PoC |
+| 3 | System & Infrastructure (DevOps) | Rafif | server Linux (VM/Docker), syslog/rsyslog, daemon pengirim log |
+| 4 | Red Team & Exploit Specialist | Michael | skenario serangan (brute force SSH), skrip manipulasi log, PoC |
 | 5 | Frontend Engineer (SOC Dashboard) | Joseph | React/HTML+Tailwind, login MetaMask, alarm real-time |
-| 6 | Cybersecurity Auditor & QA Lead | — | koordinasi repo, threat modeling, laporan audit (CVSS v4.0) |
+| 6 | Cybersecurity Auditor & QA Lead | Nat | koordinasi repo, threat modeling, laporan audit (CVSS v4.0) |
 
 > Repo ini fokus ke **pekerjaan #1 (Smart Contract)**. Folder `backend/` dan
 > `frontend/` belum ada di sini — dipegang #2 dan #5.
