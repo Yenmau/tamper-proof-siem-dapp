@@ -6,6 +6,9 @@ penyerang masuk ke server dan mengubah/menghapus log untuk menghilangkan jejak,
 hash server tidak akan cocok lagi dengan hash on-chain → event
 `TamperingDetected` dipancarkan → frontend menaikkan **alarm real-time**.
 
+**Kontrak live (Sepolia): [`0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd`](https://sepolia.etherscan.io/address/0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd)**
+— lihat [`deployments.json`](deployments.json) dan [`HANDOVER.md`](HANDOVER.md).
+
 ---
 
 ## 👥 Pembagian Peran Tim
@@ -34,7 +37,7 @@ hash server tidak akan cocok lagi dengan hash on-chain → event
 | 4 | Otorisasi 3 role (Admin, SOC Analyst, Auditor) | ✅ selesai (v3.0) | lihat [Matriks RBAC](#-rbac--3-role) |
 | 5 | File ABI (JSON) | ✅ 44 entri, hasil compile terverifikasi | [`contracts/SIEMLogger.json`](contracts/SIEMLogger.json) |
 | 6 | Bytecode (bonus) | ✅ 8.948 byte | [`contracts/SIEMLogger.bytecode.txt`](contracts/SIEMLogger.bytecode.txt) |
-| 7 | Deploy testnet + Contract Address | ⏳ **menunggu Vincent** | ikuti [`DEPLOY.md`](DEPLOY.md), isi [`deployments.json`](deployments.json) |
+| 7 | Deploy testnet + Contract Address | ✅ **Sepolia** `0x1E6b...0BbBd` | [`deployments.json`](deployments.json) |
 | 8 | Kit integrasi (backend + frontend) | ✅ selesai & diuji end-to-end | [`integration/`](integration/) |
 
 ---
@@ -199,6 +202,9 @@ SIEMLogger v3.0
 
 ## 🚀 Cara Deploy ke Testnet
 
+> ✅ **Sudah dilakukan di Sepolia** — lihat [`deployments.json`](deployments.json).
+> Langkah di bawah untuk Amoy atau re-deploy.
+
 Ikuti langkah lengkap di **[`DEPLOY.md`](DEPLOY.md)**. Ringkasnya:
 
 1. Tambah network Sepolia/Amoy ke MetaMask.
@@ -251,7 +257,8 @@ dengan `logId` yang terbaca, dan `isTampered` menjadi `true` on-chain.
 - [x] **v3.0** — RBAC 3 role (Admin / SOC Analyst / Auditor),
       `setRole` / `removeRole` / `addAnalyst` / `addAuditor`,
       event `RoleAssigned` / `RoleRevoked`.
-- [ ] **v3.1** — deploy ke Sepolia + Amoy, verifikasi kontrak di explorer.
+- [x] **v3.1** — deploy ke Sepolia ✅ (`0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd`);
+      Amoy + verifikasi explorer menyusul.
 - [ ] **v4.0** (kalau waktu cukup) — hash disimpan sebagai `bytes32`
       (hemat gas signifikan dari penyimpanan string) + Merkle root per batch.
 

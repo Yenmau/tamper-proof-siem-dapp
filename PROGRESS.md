@@ -2,7 +2,7 @@
 
 Catatan pribadi Vincent. Scope: **hanya** point 1. Ini bukan dokumen tim.
 
-Terakhir diperbarui: 2026-10-09 · commit `9a3b706`
+Terakhir diperbarui: 2026-10-10 · commit `a384439`
 
 ---
 
@@ -15,7 +15,7 @@ Terakhir diperbarui: 2026-10-09 · commit `9a3b706`
 | 1 | Menulis & menguji kode Solidity (`SIEMLogger.sol`) | ✅ selesai |
 | 2 | Membuat fungsi pencatatan hash & verifikasi integritas | ✅ selesai |
 | 3 | Mengatur akses otorisasi 3 role (Admin, SOC Analyst, Auditor) | ✅ selesai |
-| 4 | **Deployment ke jaringan testnet** | ❌ **BELUM** |
+| 4 | **Deployment ke jaringan testnet** | ✅ selesai (Sepolia) |
 
 **Deliverable yang harus diserahkan:**
 
@@ -23,52 +23,34 @@ Terakhir diperbarui: 2026-10-09 · commit `9a3b706`
 |---|---|---|
 | `contracts/SIEMLogger.sol` | ✅ | [contracts/SIEMLogger.sol](contracts/SIEMLogger.sol) |
 | `contracts/SIEMLogger.json` (ABI) | ✅ 44 entri | [contracts/SIEMLogger.json](contracts/SIEMLogger.json) |
-| Contract Address hasil testnet | ❌ kosong | [deployments.json](deployments.json) |
+| Contract Address hasil testnet | ✅ Sepolia `0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd` | [deployments.json](deployments.json) |
 
-Itu saja. 3 dari 4 tugas beres, sisa 1.
+Itu saja. **4 dari 4 tugas beres.** ✅
 
 ---
 
-## 2. ⏭️ LANJUT DARI SINI (yang harus dikerjakan)
+## 2. ⏭️ SISA PEKERJAAN (deploy sudah beres)
 
-### Langkah A — Deploy ke testnet (BLOCKER utama)
+### ✅ Langkah A & B — SELESAI (2026-10-10)
 
-Butuh MetaMask punya sendiri. Panduan lengkap 1-per-1 + link faucet yang masih aktif
-ada di **[DEPLOY.md](DEPLOY.md)**. Ringkasnya:
+Kontrak sudah **live di Sepolia**. Tidak ada lagi langkah deploy yang tersisa.
 
-1. Tambah network **Sepolia** ke MetaMask (chainId `11155111`, RPC `https://rpc.sepolia.org`)
-   — atau **Polygon Amoy** (`80002`, `https://rpc-amoy.polygon.technology/`, gas token POL).
-2. Ambil token gratis dari faucet:
-   - Sepolia: https://cloud.google.com/application/web3/faucet/ethereum/sepolia
-   - Amoy: https://faucet.polygon.technology/
-3. Buka https://remix.ethereum.org → buat file `contracts/SIEMLogger.sol` → paste isi
-   file dari repo ini.
-4. Tab **Solidity Compiler**:
-   - Compiler **0.8.26**
-   - **Enable optimization** ✅, runs **200**
-   - EVM Version **paris**
-   - ⚠️ Wajib sama dengan `hardhat.config.js`, kalau tidak bytecode/ABI-nya bisa beda.
-5. Tab **Deploy & Run** → Environment **`Injected Provider - MetaMask`** →
-   Contract **`SIEMLogger`** → **Deploy** → Confirm di MetaMask.
-6. **Catat Contract Address**-nya (muncul di daftar *Deployed Contracts* atau di
-   terminal Remix, dan tercatat di Activity MetaMask).
+| Item | Nilai |
+|---|---|
+| Contract Address | `0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd` |
+| Deploy tx hash | `0x71a20cefe683532fbb4b8abbd184af83bf584c7b7cbbff16e8fcd1b95704eba2` |
+| Network | Sepolia (chainId `11155111`) |
+| Deployed | 2026-10-10 22:30 WIB (blok 11885443) |
+| Explorer | https://sepolia.etherscan.io/address/0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd |
+| Tercatat di | [`deployments.json`](deployments.json) — commit `a384439` |
 
-### Langkah B — Catat hasilnya
+Prosedur lengkap (untuk Amoy atau re-deploy) tetap ada di **[DEPLOY.md](DEPLOY.md)**.
 
-Isi [`deployments.json`](deployments.json):
+> ⚠️ Temuan saat deploy: RPC `https://rpc.sepolia.org` **error (404)**. Yang dipakai &
+> terverifikasi jalan: `https://ethereum-sepolia-rpc.publicnode.com`.
 
-```json
-"11155111": {
-  "network": "sepolia",
-  "contract": "SIEMLogger",
-  "address": "0x....",          <-- isi ini
-  "deployTxHash": "0x....",
-  "deployedAt": "2026-10-..",
-  "explorer": "https://sepolia.etherscan.io/address/"
-}
-```
-
-Lalu `git add deployments.json && git commit -m "chore: contract address testnet" && git push`.
+> Catatan gas: deploy menghabiskan **14,16 juta gas** (~0,022 ETH) — jauh di atas normal
+> (~2 juta). Tidak merusak apa pun, tapi layak ditelusuri kalau mau dibahas di laporan.
 
 ### Langkah C — Set role akun tim (ini on-chain, tetap scope kamu)
 
@@ -89,10 +71,9 @@ Cek pakai `getRoleName(address)` → harus balikin `"ADMIN"` / `"SOC_ANALYST"` /
 
 Setelah A–D selesai → **point 1 kamu 100%.**
 
-### ⏸️ Keputusan yang masih menggantung
+### ✅ Keputusan: dibiarkan
 
-Dua file ini **di luar scope** kamu (kerjaan orang lain). Mau dihapus atau dibiarkan
-sebagai referensi — belum diputuskan:
+Dua file ini **di luar scope** kamu (kerjaan orang lain). Diputuskan **dibiarkan** sebagai referensi/titik sambung — tidak dihapus:
 
 - `integration/backend/logCollector.js` → kerjaan #2 Yasin
 - `integration/frontend/index.html` → kerjaan #5 Joseph
@@ -157,6 +138,8 @@ Semua ada alasannya di [CHANGELOG.md](CHANGELOG.md).
 | `e6a0fdb` | sinkron versi package-lock |
 | `8c0539f` | kit integrasi + fix event logId tidak terbaca |
 | `9a3b706` | fix: hapus file log harus memicu alarm |
+| `cebda6c` | docs: PROGRESS.md + sisa pekerjaan point 1 |
+| `a384439` | chore: contract address testnet sepolia |
 
 Repo: https://github.com/Yenmau/tamper-proof-siem-dapp
 
