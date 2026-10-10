@@ -118,15 +118,39 @@ Detail lengkap: [`integration/README.md`](integration/README.md).
 `main` **dilindungi** — tidak ada yang boleh push langsung ke sana. Semua perubahan lewat
 **branch + Pull Request**. Ini supaya kesalahan di branch tidak merusak `main`.
 
+**Prasyarat (sekali saja):**
+
+1. Undangan collaborator sudah **diterima** (cek email / notifikasi GitHub). Kalau belum
+   di-accept, `git push` akan gagal (403 Forbidden).
+2. Set identitas git di komputermu:
+
 ```bash
+git config --global user.name "Nama Kamu"
+git config --global user.email "email@kamu.com"
+```
+
+**Alurnya:**
+
+```bash
+# 1. clone (sekali saja)
 git clone https://github.com/Yenmau/tamper-proof-siem-dapp.git
 cd tamper-proof-siem-dapp
+
+# 2. ambil main terbaru, lalu buat branch kerja
+git checkout main
+git pull origin main
 git checkout -b feat/<nama-pekerjaan>
-# ...kerja & commit...
+
+# 3. kerja ... lalu commit
+git add <file-yang-diubah>
+git commit -m "feat: deskripsi singkat"
+
+# 4. kirim BRANCH-nya (bukan main)
 git push -u origin feat/<nama-pekerjaan>
 ```
 
-Lalu buka **Pull Request** ke `main` di GitHub — minta Vincent review & merge.
+Lalu buka **Pull Request** ke `main` di GitHub (klik "Compare & pull request") — minta Vincent
+review & merge. Setelah di-merge, sinkronkan lagi: `git checkout main && git pull origin main`.
 
 Aturan main:
 
