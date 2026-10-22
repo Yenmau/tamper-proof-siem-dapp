@@ -54,3 +54,41 @@ Apa yang terjadi?
 
 ---
 *Dikembangkan oleh Tim Jobdesk #2 (Cryptographic & Backend Engineer).*
+
+---
+
+## ⚠️ Syarat & batasan yang perlu diketahui
+
+**1. MongoDB wajib menyala.** `merkleCollector.js` membuka koneksi Mongo di
+awal `record` **dan** `watch`. Tanpa Mongo, skrip berhenti dengan
+`ECONNREFUSED 127.0.0.1:27017`. `logCollector.js` tidak butuh Mongo.
+
+**2. Konfigurasi dibaca dari `integration/backend/.env`** (path relatif ke
+lokasi skrip), jadi boleh dijalankan dari root repo:
+
+```bash
+cp integration/backend/.env.example integration/backend/.env
+# isi RPC_URL, CONTRACT_ADDRESS, PRIVATE_KEY, MONGO_URI
+node integration/backend/merkleCollector.js record integration/backend/sample/auth.log "auth.log#01"
+```
+
+**3. Jangan memakai `merkleCollector.js` dan `logCollector.js` untuk `logId`
+yang sama.** Nilai yang dikirim berbeda untuk file yang identik (Merkle Root vs
+SHA-256 file utuh), sehingga pengecekan silang melaporkan `TAMPERED` palsu.
+Diuji: file sama → `verifyLogIntegrityView` = `false`.
+
+**4. `watch` di skrip ini hanya memeriksa SEKALI** (tidak ada `intervalDetik` /
+`maxIterasi` seperti `logCollector.js`) — belum bisa dipakai sebagai daemon
+tanpa pembungkus `while`/systemd timer.
+
+**5. File log yang seluruh barisnya kosong menghasilkan root `"0x"`**
+(`merklejs` tidak melempar error untuk pohon kosong), dan fallback
+`|| "0x000…0"` di skrip tidak pernah terpakai karena `"0x"` sudah truthy.
+Artinya semua log kosong bisa punya hash on-chain yang sama.
+
+**6. Baris log mentah disimpan plaintext di MongoDB.** Untuk klaim
+*tamper-proof*, perlu dicatat bahwa DB off-chain ini juga bisa ditulis ulang
+oleh penyerang; yang membuat alarm tetap valid adalah Merkle Root **on-chain**.
+Selain itu **Merkle proof belum dibuat/diverifikasi**, jadi kemampuan
+"menunjukkan baris mana yang diubah" saat ini berasal dari perbandingan teks
+dengan salinan MongoDB (bukan bukti kriptografis).

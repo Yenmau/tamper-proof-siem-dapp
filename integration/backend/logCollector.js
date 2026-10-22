@@ -28,6 +28,10 @@
  * ---------------------------------------------------------------------------
  * ENV YANG DIBUTUHKAN
  * ---------------------------------------------------------------------------
+ * Nilainya boleh ditaruh di file `integration/backend/.env` (salin dari
+ * `.env.example`) — dibaca otomatis oleh skrip ini. Environment variable dari
+ * shell akan menang kalau keduanya diisi.
+ *
  *   RPC_URL            endpoint testnet, mis. https://rpc.sepolia.org
  *   CONTRACT_ADDRESS   alamat hasil deploy (lihat deployments.json)
  *   PRIVATE_KEY        private key akun yang SUDAH diberi role
@@ -39,6 +43,11 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { ethers } = require("ethers");
+
+// Dibaca relatif terhadap lokasi skrip ini (bukan current working directory),
+// supaya `node integration/backend/logCollector.js ...` dari root repo tetap
+// menemukan integration/backend/.env.
+require("dotenv").config({ path: path.join(__dirname, ".env"), quiet: true });
 
 // ---------------------------------------------------------------------------
 // Konfigurasi

@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Hardhat test + cek skrip backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependensi
+        run: npm ci
+
+      - name: Test kontrak (15 test)
+        run: npm test
+
+      - name: Syntax check skrip backend
+        run: npm run lint:backend
+
+      # Penjaga regresi: `.env.example` pernah rusak karena di-append oleh
+      # PowerShell (`>>` menulis UTF-16LE) sehingga jadi file binary dan
+      # variabelnya tidak terbaca. Kalau kembali terjadi, CI gagal di sini.
+      - name: Cek encoding .env.example (harus teks UTF-8/ASCII)
+        run: |
+          ENC=$(file -b --mime-encoding integration/backend/.env.example)
+          echo "encoding terdeteksi: $ENC"
+          case "$ENC" in
+            utf-16*|binary|unknown-8bit)
+              echo "::error file=integration/backend/.env.example::Bukan UTF-8 (kemungkinan ter-append oleh PowerShell). Tulis ulang sebagai UTF-8."
+              exit 1
+              ;;
+          esac

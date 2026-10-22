@@ -1,7 +1,7 @@
 # 🤝 HANDOVER — dari #1 (Smart Contract) ke Tim
 
 Dokumen serah terima. Ditulis oleh **Vincent (#1 — Smart Contract Developer / Web3 Lead)**.
-Terakhir diperbarui: 2026-10-10 · commit `a384439`.
+Terakhir diperbarui: 2026-10-22 (sesi 3 — perapian backend + CI).
 
 Tujuannya: supaya **Yasin (#2 backend)** dan **Joseph (#5 frontend)** langsung paham
 apa yang sudah jadi, apa yang mereka terima, dan dari mana mereka mulai.
@@ -29,8 +29,25 @@ Selalu baca alamat terbaru dari `deployments.json`, jangan hardcode di banyak te
 
 ### Yasin (#2 — Cryptographic & Backend Engineer)
 
-Terima: Contract Address, chainId `11155111`, RPC URL, ABI, dan (menyusul) **role SOC_ANALYST**.
-Titik mulai: [`integration/backend/`](integration/backend/) — `logCollector.js`, `.env.example`, `sample/auth.log`.
+Terima: Contract Address, chainId `11155111`, RPC URL, ABI, dan **role SOC_ANALYST** (sudah terpasang).
+Titik mulai: [`integration/backend/`](integration/backend/) — `logCollector.js`, `merkleCollector.js`, `.env.example`, `sample/auth.log`.
+
+Ada **dua** skrip backend, pilih salah satu per `logId` (jangan dicampur):
+
+| Skrip | `logHash` yang dikirim | Butuh MongoDB |
+|---|---|---|
+| `logCollector.js` | SHA-256 seluruh file log | ❌ |
+| `merkleCollector.js` | Merkle Root (hash per baris) | ✅ |
+
+Catatan operasional:
+
+- Kedua skrip membaca `integration/backend/.env` **relatif ke lokasi skrip**, jadi
+  boleh dijalankan dari root repo dan tidak wajib meng-`export` env di shell.
+- `ethers` ada di `dependencies` (bukan dev), jadi server yang memakai
+  `npm ci --omit=dev` / `NODE_ENV=production` tetap bisa menjalankan collector.
+- Jalur Merkle mensyaratkan **MongoDB menyala** — tanpa itu `merkleCollector.js`
+  berhenti dengan `ECONNREFUSED 127.0.0.1:27017`. Detail:
+  [`integration/backend/README_MERKLE.md`](integration/backend/README_MERKLE.md).
 
 **Bisa mulai SEKARANG tanpa role.** Uji di node lokal (`npx hardhat node`) — di situ akunmu
 otomatis admin, jadi `recordLogHash` / `verifyLogIntegrity` bisa langsung dicoba. Role

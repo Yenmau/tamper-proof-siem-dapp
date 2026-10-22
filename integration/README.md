@@ -7,7 +7,9 @@ frontend (Joseph). Dua-duanya memakai ABI yang sama:
 ```
 integration/
 ├── backend/
-│   ├── logCollector.js      ← skrip Node.js: baca log, SHA-256, kirim/baca ke kontrak
+│   ├── logCollector.js      ← versi dasar: SHA-256 file utuh (tanpa DB)
+│   ├── merkleCollector.js   ← versi lanjutan: Merkle Tree + MongoDB (README_MERKLE.md)
+│   ├── README_MERKLE.md     ← penjelasan jalur Merkle + syarat MongoDB
 │   ├── .env.example         ← template konfigurasi (salin jadi .env)
 │   └── sample/auth.log      ← contoh file log untuk uji coba
 └── frontend/
@@ -78,12 +80,18 @@ dan import akun dev Hardhat (private key di atas) supaya saldonya ada.
 ### Setup
 
 ```bash
-cd integration/backend
-cp .env.example .env      # lalu isi RPC_URL, CONTRACT_ADDRESS, PRIVATE_KEY
+cp integration/backend/.env.example integration/backend/.env
+# lalu isi RPC_URL, CONTRACT_ADDRESS, PRIVATE_KEY
 ```
 
-`ethers` sudah ada di `node_modules` root repo, jadi cukup `npm install` sekali
-di root.
+File `integration/backend/.env` dibaca otomatis oleh `logCollector.js` **dan**
+`merkleCollector.js` — path-nya relatif ke lokasi skrip, jadi skrip boleh
+dijalankan dari root repo (`node integration/backend/logCollector.js …`).
+Kalau `export RPC_URL=…` di shell diisi juga, nilai shell yang menang.
+
+Cukup `npm install` sekali di root repo. `ethers` (dipakai saat *runtime* oleh
+kedua skrip) ada di `dependencies`, jadi tetap terpasang walau server memakai
+`npm ci --omit=dev` / `NODE_ENV=production`.
 
 ### Dua mode
 
@@ -131,18 +139,35 @@ Minta Vincent (owner) memanggil:
 addAnalyst(0x<alamat akun server Yasin>)
 ```
 
-### Langkah lanjutan (untuk Yasin kerjakan)
+### Versi Merkle (`merkleCollector.js`) — sudah ada
 
-Skrip ini sengaja dibuat sederhana dan **memakai hash file utuh**. Sesuai
-pembagian tugas, berikutnya di sisi Yasin:
+Skrip di atas adalah versi dasar: `logHash` = **SHA-256 seluruh file**. Versi
+lanjutan dari #2 memecah log **baris per baris**, membangun **Merkle Tree**,
+mengunci **Merkle Root** on-chain, dan menyimpan baris mentahnya di
+**MongoDB**. Detailnya di
+[`backend/README_MERKLE.md`](backend/README_MERKLE.md).
 
-- [ ] pecah log per baris/batch lalu bangun **Merkle Tree**, simpan Merkle root
-      sebagai `logHash` (lebih efisien daripada hash seluruh file)
+| Skrip | Nilai yang dikirim sebagai `logHash` | Butuh MongoDB |
+|---|---|---|
+| `logCollector.js` | SHA-256 seluruh file | ❌ |
+| `merkleCollector.js` | Merkle Root (dari hash tiap baris) | ✅ |
+
+> ⚠️ **Jangan memakai dua skrip ini untuk `logId` yang sama.** Keduanya
+> menghasilkan hash yang berbeda untuk file yang identik, jadi pengecekan
+> silang akan melaporkan 🔴 TAMPERED padahal isi file tidak berubah
+> (sudah diuji: file sama → `verifyLogIntegrityView` = `false`). Konvensinya:
+> satu `logId` dikelola satu skrip saja.
+
+### Sisa pekerjaan di sisi Yasin
+
+- [x] Merkle Tree per baris + Merkle Root sebagai `logHash` (`merkleCollector.js`)
+- [x] simpan detail baris log ke database off-chain (MongoDB)
+- [ ] **Merkle proof per baris** — sekarang proof belum dibuat/diverifikasi,
+      jadi klaim "baris ke-i tidak berubah" belum terbukti secara kriptografis;
+      yang ada baru perbandingan teks dengan salinan di MongoDB
 - [ ] kirim banyak log sekaligus lewat `recordLogHashBatch(ids, hashes)`
       (hemat ±19% gas per log)
-- [ ] simpan detail baris log + Merkle proof di database off-chain
-      (MongoDB/PostgreSQL)
-- [ ] jalankan skrip ini sebagai *service* (systemd / Docker) — bagian DevOps
+- [ ] jalankan skrip ini sebagai *service* (systemd / Docker) — bagian DevOps #3
 
 ---
 
@@ -157,7 +182,12 @@ pembagian tugas, berikutnya di sisi Yasin:
 3. Sajikan lewat HTTP (MetaMask tidak jalan di `file://`):
    `python -m http.server 8788` dari root repo.
 
-ABI di-load otomatis dari `contracts/SIEMLogger.json`, tidak perlu di-copy.
+ABI-nya **ditempel langsung di dalam `index.html`** (7 entri yang dipakai
+dashboard), jadi tidak ada lagi `fetch` ke `contracts/SIEMLogger.json`.
+Nilai default `CONFIG` sudah menunjuk ke kontrak **Sepolia yang live**
+(`0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd`, chainId `11155111`); ganti ke
+`0x5FbDB2315678afecb367f032d93F642f64180aa3` + chainId `31337` kalau mau
+menguji di node Hardhat lokal.
 
 ### Fitur yang sudah jalan
 

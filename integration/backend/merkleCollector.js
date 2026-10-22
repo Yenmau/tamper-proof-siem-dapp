@@ -7,13 +7,17 @@
  * Sementara itu, log mentah akan disimpan ke MongoDB (Off-Chain) untuk efisiensi.
  */
 
-require('dotenv').config();
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { ethers } = require("ethers");
 const { MerkleTree } = require("merkletreejs");
 const mongoose = require("mongoose");
+
+// Dibaca relatif terhadap lokasi skrip ini (bukan current working directory),
+// supaya `node integration/backend/merkleCollector.js ...` dari root repo tetap
+// menemukan integration/backend/.env. Environment variable dari shell menang.
+require("dotenv").config({ path: path.join(__dirname, ".env"), quiet: true });
 
 // ---------------------------------------------------------------------------
 // Konfigurasi Environment

@@ -6,6 +6,51 @@ Semua perubahan penting pada smart contract. Format mengikuti
 
 ---
 
+## [Unreleased] — perapian `integration/backend` + CI (bukan perubahan kontrak)
+
+`contracts/SIEMLogger.sol` **tidak disentuh**; ABI, bytecode, dan alamat Sepolia
+tetap sama. Bagian ini mencatat perubahan di sekitarnya supaya jejaknya jelas.
+
+### Fixed
+
+- **`integration/backend/.env.example` rusak encoding.** Baris `MONGO_URI`
+  ter-*append* sebagai UTF-16LE (pola khas `>>` di PowerShell), sehingga file
+  jadi binary (`file` → `data`) dan variabelnya tidak terbaca. Ditulis ulang
+  sebagai UTF-8; CI sekarang **menolak** file ini kalau kembali non-UTF-8.
+- **`logCollector.js` tidak memuat `.env` sama sekali**, padahal
+  `integration/README.md` menyuruh `cp .env.example .env` — akibatnya
+  `❌ ENV CONTRACT_ADDRESS belum di-set` walau `.env` sudah diisi. Sekarang
+  membaca `integration/backend/.env` **relatif ke lokasi skrip**, jadi skrip
+  bisa dijalankan dari root repo tanpa `export` manual.
+- **`merkleCollector.js` memuat `.env` relatif current working directory**
+  (`require('dotenv').config()`), sehingga hanya jalan kalau di-`cd` dulu ke
+  `integration/backend`. Ikut diperbaiki dengan pola yang sama.
+- **`ethers` ada di `devDependencies`** padahal dipakai saat *runtime* oleh
+  kedua skrip backend → di server dengan `npm ci --omit=dev` /
+  `NODE_ENV=production` collector mati dengan `MODULE_NOT_FOUND: ethers`.
+  Dipindah ke `dependencies`.
+
+### Added
+
+- **`.github/workflows/ci.yml`** — menjalankan 15 test kontrak (`npm test`),
+  syntax check skrip backend, dan penjaga encoding `.env.example`.
+- `npm run lint:backend`.
+- Dokumentasi: jalur Merkle kini tercatat di `README.md`, `HANDOVER.md`, dan
+  `integration/README.md`; batasan jalur Merkle (wajib MongoDB, `watch` sekali
+  jalan, root `"0x"` untuk file kosong, baris mentah plaintext di Mongo, Merkle
+  proof belum ada) dicatat di `integration/backend/README_MERKLE.md`.
+
+### Known issues (belum diperbaiki, sengaja didokumentasikan)
+
+- Dua skrip backend memakai basis hash berbeda untuk `logHash` yang sama
+  (SHA-256 file utuh vs Merkle Root) → pengecekan silang menghasilkan alarm
+  palsu. Sementara ini dicegah lewat konvensi "satu `logId`, satu skrip".
+- ~60% kode kedua skrip duplikat (`die`, `loadAbi`, `sha256`, `explainError`,
+  `connect`) — kandidat dijadikan satu modul bersama.
+- `merkleCollector.js` `watch` hanya memeriksa sekali (tidak ada interval).
+
+---
+
 ## [3.0.0] — 2026-10-09
 
 **Sifat rilis: backward compatible untuk 3 fungsi inti.**
