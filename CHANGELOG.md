@@ -40,14 +40,42 @@ tetap sama. Bagian ini mencatat perubahan di sekitarnya supaya jejaknya jelas.
   jalan, root `"0x"` untuk file kosong, baris mentah plaintext di Mongo, Merkle
   proof belum ada) dicatat di `integration/backend/README_MERKLE.md`.
 
+### Changed — rapikan kode backend (algoritma TIDAK berubah)
+
+- Utilitas yang sama dipindah ke `integration/backend/lib/collector-core.js`
+  (`die`, `loadAbi`, `sha256`, `explainError`, `connect`, `explorerLink`,
+  penanganan file hilang). Sebelumnya ~60% kode kedua skrip duplikat.
+- `merkleCollector.js` sekarang ber-CLI sama dengan `logCollector.js`:
+  `watch <file> <logId> [intervalDetik] [maxIterasi]` (dulu hanya sekali cek),
+  jadi bisa dipakai sebagai daemon — default 5 detik, `0` = jalan terus.
+- **MongoDB jadi opsional** untuk `merkleCollector.js`: `MONGO_URI` kosong
+  (default di `.env.example`) atau flag `--no-db` → skrip tetap jalan tanpa DB;
+  yang hilang hanya perbandingan baris demi baris.
+- **Baru: deteksi "salah skrip".** Sebelum mengirim alarm, `logHash` on-chain
+  dibandingkan dengan hasil hitung mode lain untuk file yang sama. Kalau cocok,
+  skrip mencetak `⚠️ SALAH SKRIP` dan **menahan transaksi** — supaya
+  `isTampered` tidak tercemar alarm palsu (flag itu satu arah, tidak bisa
+  dikembalikan ke `false`).
+- **File tanpa baris berisi tidak lagi menghasilkan root `"0x"`** (dulu semua
+  log kosong bisa ber-hash sama, dan fallback `|| "0x000…0"` tidak pernah jalan
+  karena `"0x"` truthy): `record` menolak dengan pesan jelas, `watch`
+  mengirim penanda `0x__LOG_FILE_EMPTY__`, dan panjang root diverifikasi dulu
+  (harus 66 karakter) sebelum dikirim.
+- Unit test backend: `npm run test:backend` (13 test, tanpa jaringan/MongoDB),
+  ditambahkan sebagai langkah di CI.
+
 ### Known issues (belum diperbaiki, sengaja didokumentasikan)
 
-- Dua skrip backend memakai basis hash berbeda untuk `logHash` yang sama
-  (SHA-256 file utuh vs Merkle Root) → pengecekan silang menghasilkan alarm
-  palsu. Sementara ini dicegah lewat konvensi "satu `logId`, satu skrip".
-- ~60% kode kedua skrip duplikat (`die`, `loadAbi`, `sha256`, `explainError`,
-  `connect`) — kandidat dijadikan satu modul bersama.
-- `merkleCollector.js` `watch` hanya memeriksa sekali (tidak ada interval).
+- Satu `logId` tetap hanya boleh dikelola satu skrip: kontrak menyimpan satu
+  nilai `logHash`, jadi tidak ada tempat untuk menandai mode hashing. Salah
+  skrip kini terdeteksi otomatis, tetapi pencegahan idealnya di sisi #2
+  (mis. menandai mode di dalam `logId`).
+- **Merkle proof per baris belum dibuat/diverifikasi** — kemampuan "menunjukkan
+  baris mana yang diubah" masih berasal dari perbandingan teks dengan salinan
+  MongoDB, belum bukti kriptografis.
+- Baris log mentah disimpan plaintext di MongoDB (bisa ditulis ulang penyerang;
+  penjaga integritas yang sebenarnya tetap Merkle Root on-chain).
+- `recordLogHashBatch` belum dipakai collector (masih TODO #2).
 
 ---
 

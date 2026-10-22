@@ -27,6 +27,9 @@ jobs:
       - name: Syntax check skrip backend
         run: npm run lint:backend
 
+      - name: Test unit backend (tanpa jaringan/MongoDB)
+        run: npm run test:backend
+
       # Penjaga regresi: `.env.example` pernah rusak karena di-append oleh
       # PowerShell (`>>` menulis UTF-16LE) sehingga jadi file binary dan
       # variabelnya tidak terbaca. Kalau kembali terjadi, CI gagal di sini.

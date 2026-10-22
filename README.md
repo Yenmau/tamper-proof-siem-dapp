@@ -73,8 +73,8 @@ Role lain diberikan oleh ADMIN lewat `setRole` / `addAnalyst` / `addAuditor` /
 - **Remix IDE** — tempat kerja utama Vincent: https://remix.ethereum.org
 - **Hardhat + ethers v6 + chai** — untuk `npm test` (opsional)
 - **Node.js 20+** — skrip backend di `integration/backend/`
-- **MongoDB** — hanya untuk jalur Merkle (`merkleCollector.js`)
-- **CI** — GitHub Actions menjalankan 15 test kontrak + syntax check backend
+- **MongoDB** — opsional, hanya untuk perbandingan baris di `merkleCollector.js`
+- **CI** — GitHub Actions: 15 test kontrak + unit test backend + syntax check + guard encoding
 - **Testnet** — Ethereum Sepolia (chainId `11155111`) atau Polygon Amoy (`80002`)
 
 ---
@@ -100,7 +100,9 @@ tamper-proof-siem-dapp/
 │   └── SIEMLogger.bytecode.txt   ← bytecode hasil compile
 ├── integration/                  ← kit sambung ke backend & frontend
 │   ├── backend/logCollector.js   ← #2: SHA-256 file utuh → kontrak
-│   ├── backend/merkleCollector.js← #2: Merkle Tree + MongoDB (README_MERKLE.md)
+│   ├── backend/merkleCollector.js← #2: Merkle Tree + MongoDB (opsional)
+│   ├── backend/lib/collector-core.js ← kode bersama kedua collector
+│   ├── backend/test/core.test.js ← 13 unit test backend (tanpa jaringan)
 │   ├── backend/.env.example      ← template konfigurasi (salin jadi .env)
 │   ├── frontend/index.html       ← #5: SOC Dashboard (ABI inline, default Sepolia)
 │   └── README.md                 ← panduan integrasi + uji end-to-end lokal
@@ -108,7 +110,7 @@ tamper-proof-siem-dapp/
 │   └── deploy.js                 ← deploy tanpa Remix (opsional)
 ├── test/
 │   └── SIEMLogger.test.js        ← 15 test otomatis (RBAC + fungsi inti + gas)
-├── .github/workflows/ci.yml      ← CI: npm test + syntax check backend + guard encoding
+├── .github/workflows/ci.yml      ← CI: test kontrak + unit test backend + guard encoding
 ├── deployments.json              ← alamat kontrak per network (diisi saat deploy)
 ├── DEPLOY.md                     ← panduan deploy testnet + set role + serah terima
 ├── CHANGELOG.md                  ← riwayat perubahan v1.0 → v2.0 → v3.0

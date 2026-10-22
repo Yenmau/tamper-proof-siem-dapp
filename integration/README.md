@@ -147,24 +147,30 @@ mengunci **Merkle Root** on-chain, dan menyimpan baris mentahnya di
 **MongoDB**. Detailnya di
 [`backend/README_MERKLE.md`](backend/README_MERKLE.md).
 
-| Skrip | Nilai yang dikirim sebagai `logHash` | Butuh MongoDB |
+| Skrip | Nilai yang dikirim sebagai `logHash` | MongoDB |
 |---|---|---|
-| `logCollector.js` | SHA-256 seluruh file | ❌ |
-| `merkleCollector.js` | Merkle Root (dari hash tiap baris) | ✅ |
+| `logCollector.js` | SHA-256 seluruh file | tidak dipakai |
+| `merkleCollector.js` | Merkle Root (dari hash tiap baris) | **opsional** (untuk diff per baris) |
+
+Keduanya sekarang: CLI sama (`record` / `watch [intervalDetik] [maxIterasi]`),
+memakai kode bersama di [`backend/lib/collector-core.js`](backend/lib/collector-core.js),
+dan punya unit test tanpa jaringan: `npm run test:backend`.
 
 > ⚠️ **Jangan memakai dua skrip ini untuk `logId` yang sama.** Keduanya
-> menghasilkan hash yang berbeda untuk file yang identik, jadi pengecekan
-> silang akan melaporkan 🔴 TAMPERED padahal isi file tidak berubah
-> (sudah diuji: file sama → `verifyLogIntegrityView` = `false`). Konvensinya:
-> satu `logId` dikelola satu skrip saja.
+> menghasilkan hash berbeda untuk file yang identik, jadi pengecekan silang
+> melaporkan `false` — dan skrip akan mencetak `⚠️ SALAH SKRIP` lalu
+> **menahan alarm** supaya `isTampered` tidak tercemar alarm palsu (flag itu
+> satu arah). Konvensinya tetap: satu `logId` dikelola satu skrip.
 
 ### Sisa pekerjaan di sisi Yasin
 
 - [x] Merkle Tree per baris + Merkle Root sebagai `logHash` (`merkleCollector.js`)
-- [x] simpan detail baris log ke database off-chain (MongoDB)
+- [x] simpan detail baris log ke database off-chain (MongoDB) — sekarang **opsional**
+- [x] kode bersama dipindah ke `lib/collector-core.js` (dulu ~60% duplikat antar skrip)
+- [x] unit test backend tanpa jaringan: `npm run test:backend`
 - [ ] **Merkle proof per baris** — sekarang proof belum dibuat/diverifikasi,
       jadi klaim "baris ke-i tidak berubah" belum terbukti secara kriptografis;
-      yang ada baru perbandingan teks dengan salinan di MongoDB
+      yang ada baru perbandingan teks dengan salinan MongoDB
 - [ ] kirim banyak log sekaligus lewat `recordLogHashBatch(ids, hashes)`
       (hemat ±19% gas per log)
 - [ ] jalankan skrip ini sebagai *service* (systemd / Docker) — bagian DevOps #3

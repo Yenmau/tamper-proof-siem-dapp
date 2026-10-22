@@ -1,37 +1,45 @@
 #!/usr/bin/env node
 /**
- * merkleCollector.js — Backend Log Collector dengan Merkle Tree
+ * merkleCollector.js — Backend Log Collector (mode: Merkle Tree)
  * ------------------------------------------------------------------
- * Membaca file log baris demi baris, membangun Merkle Tree untuk mendapatkan
- * Merkle Root, lalu menyimpan Root tersebut ke Smart Contract (On-Chain).
- * Sementara itu, log mentah akan disimpan ke MongoDB (Off-Chain) untuk efisiensi.
+ * File log dipecah baris demi baris, tiap baris di-hash SHA-256 sebagai leaf,
+ * lalu **Merkle Root**-nya dikunci on-chain (nilai yang dikirim sebagai
+ * `logHash`). Baris mentahnya boleh disimpan di MongoDB supaya bisa
+ * ditunjukkan **baris mana** yang berubah.
+ *
+ * MongoDB OPSIONAL. Kalau MONGO_URI kosong (default di .env.example) atau
+ * dijalankan dengan flag `--no-db`, skrip tetap jalan: yang hilang hanya
+ * penyimpanan off-chain + perbandingan baris demi baris.
+ *
+ * ---------------------------------------------------------------------------
+ * CARA PAKAI
+ * ---------------------------------------------------------------------------
+ *   node merkleCollector.js record <fileLog> <logId>
+ *   node merkleCollector.js watch  <fileLog> <logId> [intervalDetik] [maxIterasi]
+ *
+ * [intervalDetik] default 5 · [maxIterasi] default 0 (jalan terus).
+ * Tambahkan `--no-db` untuk memaksa tanpa MongoDB.
+ *
+ * ---------------------------------------------------------------------------
+ * CATATAN PENTING
+ * ---------------------------------------------------------------------------
+ * Nilai yang dikirim sebagai `logHash` BERBEDA dengan logCollector.js
+ * (Merkle Root vs SHA-256 file utuh). Satu `logId` hanya boleh dikelola satu
+ * skrip — kalau tertukar, skrip ini akan melaporkan "SALAH SKRIP" dan tidak
+ * mengirim alarm palsu (lihat core.detectModeMismatch).
  */
 
-const fs = require("fs");
 const path = require("path");
-const crypto = require("crypto");
-const { ethers } = require("ethers");
-const { MerkleTree } = require("merkletreejs");
+const fs = require("fs");
 const mongoose = require("mongoose");
+const core = require("./lib/collector-core");
 
-// Dibaca relatif terhadap lokasi skrip ini (bukan current working directory),
-// supaya `node integration/backend/merkleCollector.js ...` dari root repo tetap
-// menemukan integration/backend/.env. Environment variable dari shell menang.
-require("dotenv").config({ path: path.join(__dirname, ".env"), quiet: true });
-
-// ---------------------------------------------------------------------------
-// Konfigurasi Environment
-// ---------------------------------------------------------------------------
-const RPC_URL = process.env.RPC_URL || "http://127.0.0.1:8545";
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
-const PRIVATE_KEY = process.env.PRIVATE_KEY;
-const ABI_PATH = process.env.ABI_PATH || path.resolve(__dirname, "../../contracts/SIEMLogger.json");
-
-// Tambahkan dukungan MONGO_URI
-const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/siem_logs";
+const MODE = core.MODE_MERKLE;
+const MONGO_URI = core.MONGO_URI;
+const USE_DB = MONGO_URI !== "" && !process.argv.includes("--no-db");
 
 // ---------------------------------------------------------------------------
-// Skema MongoDB
+// Skema MongoDB (hanya dipakai kalau USE_DB)
 // ---------------------------------------------------------------------------
 const logSchema = new mongoose.Schema({
   logId: { type: String, required: true, unique: true },
@@ -40,224 +48,274 @@ const logSchema = new mongoose.Schema({
     {
       index: Number,
       content: String,
-      hash: String
-    }
+      hash: String,
+    },
   ],
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
 });
 const LogModel = mongoose.model("LogBatch", logSchema);
 
-// ---------------------------------------------------------------------------
-// Util
-// ---------------------------------------------------------------------------
-function die(msg) {
-  console.error("\n❌ " + msg + "\n");
-  process.exit(1);
-}
-
-function loadAbi() {
-  if (!fs.existsSync(ABI_PATH)) die("File ABI tidak ditemukan: " + ABI_PATH);
-  return JSON.parse(fs.readFileSync(ABI_PATH, "utf8"));
-}
-
-/** Fungsi Hash untuk Merkle Tree menggunakan SHA-256 */
-function sha256(data) {
-  return crypto.createHash("sha256").update(data).digest();
-}
-
-/** Mendapatkan array baris log dan menghilangkan baris kosong */
-function getLogLines(filePath) {
-  if (!fs.existsSync(filePath)) return null;
-  const content = fs.readFileSync(filePath, "utf8");
-  return content.split(/\r?\n/).filter(line => line.trim() !== "");
-}
-
-/** Terjemahkan revert custom error jadi pesan yang enak dibaca. */
-function explainError(contract, err) {
-  const data = err?.data || err?.info?.error?.data;
-  if (data && contract) {
-    try {
-      const parsed = contract.interface.parseError(data);
-      if (parsed) {
-        if (parsed.name === "NotOperator") return "NotOperator — butuh role SOC_ANALYST/ADMIN.";
-        if (parsed.name === "LogAlreadyExists") return "LogAlreadyExists — logId sudah ada.";
-        return parsed.name + "(" + parsed.args.join(", ") + ")";
-      }
-    } catch (_) {}
-  }
-  return err?.shortMessage || err?.message || String(err);
-}
-
-async function connectEthereum() {
-  if (!CONTRACT_ADDRESS) die("ENV CONTRACT_ADDRESS belum di-set.");
-  if (!PRIVATE_KEY) die("ENV PRIVATE_KEY belum di-set.");
-  const provider = new ethers.JsonRpcProvider(RPC_URL);
-  const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
-  const contract = new ethers.Contract(CONTRACT_ADDRESS, loadAbi(), wallet);
-  return { provider, wallet, contract };
-}
-
 async function connectMongo() {
+  if (!USE_DB) return false;
   try {
     await mongoose.connect(MONGO_URI);
     console.log("✅ Terhubung ke MongoDB:", MONGO_URI);
+    return true;
   } catch (err) {
-    die("Gagal koneksi ke MongoDB: " + err.message);
+    core.die(
+      "Gagal koneksi ke MongoDB: " + err.message +
+        "\n   Pakai flag --no-db (atau kosongkan MONGO_URI di .env) untuk jalan tanpa DB."
+    );
   }
 }
+
+async function closeMongo() {
+  if (USE_DB) await mongoose.disconnect();
+}
+
+const dbLabel = () => (USE_DB ? "aktif (" + MONGO_URI + ")" : "nonaktif — tanpa penyimpanan off-chain / diff per baris");
 
 // ---------------------------------------------------------------------------
 // Mode: record
 // ---------------------------------------------------------------------------
 async function cmdRecord(logFile, logId) {
-  const { provider, wallet, contract } = await connectEthereum();
-  await connectMongo();
+  const { provider, wallet, contract } = await core.connect();
+  const info = core.hashForMode(MODE, logFile);
+  const net = await provider.getNetwork();
 
-  const lines = getLogLines(logFile);
-  if (!lines || lines.length === 0) die("File log kosong atau tidak ditemukan.");
-
-  // Membangun Merkle Tree
-  const leaves = lines.map(line => sha256(line));
-  const tree = new MerkleTree(leaves, sha256, { sortPairs: true });
-  const rootHash = tree.getHexRoot();
-
-  console.log("─".repeat(70));
-  console.log("MODE       : record (Merkle Tree)");
-  console.log("Akun       :", wallet.address);
-  console.log("File log   :", logFile);
-  console.log("Total Baris:", lines.length);
-  console.log("Merkle Root:", rootHash);
-  console.log("─".repeat(70));
-
-  // Menyimpan Log secara Off-Chain di MongoDB
-  try {
-    const existingLog = await LogModel.findOne({ logId });
-    if (existingLog) die(`Log ID ${logId} sudah tersimpan di database.`);
-
-    const logDocs = lines.map((content, index) => ({
-      index,
-      content,
-      hash: "0x" + leaves[index].toString("hex")
-    }));
-
-    await LogModel.create({
-      logId,
-      merkleRoot: rootHash,
-      lines: logDocs
-    });
-    console.log("✅ Data log mentah tersimpan di MongoDB.");
-  } catch (err) {
-    die("Error MongoDB: " + err.message);
+  if (info.missing) core.die("File log tidak ditemukan: " + logFile);
+  if (info.empty) {
+    core.die(
+      "File log ada tapi tidak punya baris berisi (0 baris) — tidak ada yang bisa dijadikan Merkle Tree: " + logFile
+    );
   }
 
-  // Merekam ke Smart Contract
-  try {
-    const tx = await contract.recordLogHash(logId, rootHash);
-    console.log("⏳ Mengirim transaksi ke blockchain...");
-    await tx.wait();
-    console.log("✅ Merkle Root terkunci on-chain.");
-  } catch (err) {
-    console.error("❌ Transaksi gagal:", explainError(contract, err));
+  core.printBanner("MODE     : record  (logHash = Merkle Root)", [
+    ["Kontrak", core.CONTRACT_ADDRESS],
+    ["Chain", net.chainId.toString()],
+    ["Akun", wallet.address + " | role: " + (await core.roleNameSafe(contract, wallet.address))],
+    ["File log", logFile],
+    ["logId", logId],
+    ["Total baris", info.lines.length],
+    ["Merkle Root", info.hash],
+    ["MongoDB", dbLabel()],
+  ]);
+
+  if (USE_DB) {
+    try {
+      const existing = await LogModel.findOne({ logId });
+      if (existing) core.die(`Log ID ${logId} sudah tersimpan di database. Pakai logId baru.`);
+      await LogModel.create({
+        logId,
+        merkleRoot: info.hash,
+        lines: info.lines.map((content, index) => ({
+          index,
+          content,
+          hash: "0x" + require("crypto").createHash("sha256").update(content).digest("hex"),
+        })),
+      });
+      console.log("✅ Baris log mentah tersimpan di MongoDB.");
+    } catch (err) {
+      core.die("Error MongoDB: " + err.message);
+    }
+  } else {
+    console.log("ℹ️  Tanpa MongoDB: baris log tidak disimpan off-chain (diff per baris tidak akan tersedia).");
   }
 
-  mongoose.disconnect();
+  try {
+    const tx = await contract.recordLogHash(logId, info.hash);
+    console.log("⏳ transaksi terkirim:", tx.hash);
+    const rc = await tx.wait();
+    console.log("✅ Merkle Root terkunci on-chain. gas:", rc.gasUsed.toString());
+    const link = core.explorerLink(tx.hash);
+    if (link) console.log("   " + link);
+  } catch (err) {
+    console.error("❌ Transaksi gagal:", core.explainError(contract, err));
+    await closeMongo();
+    process.exitCode = 1;
+    return;
+  }
+
+  await closeMongo();
+}
+
+/** Tampilkan baris mana yang DIUBAH/DITAMBAH/DIHAPUS, dari salinan di MongoDB. */
+async function printLineDiff(logId, lines) {
+  if (!USE_DB) {
+    console.log("   (laporan per baris butuh MongoDB — jalankan dengan MONGO_URI terisi)");
+    return;
+  }
+  const dbLog = await LogModel.findOne({ logId });
+  if (!dbLog) {
+    console.log("   (tidak ada salinan baris di MongoDB untuk logId ini)");
+    return;
+  }
+  const orig = dbLog.lines || [];
+  const max = Math.max(lines.length, orig.length);
+  let shown = 0;
+  for (let i = 0; i < max; i++) {
+    const before = orig[i];
+    const now = lines[i];
+    if (!before) {
+      console.log(`   [TAMBAHAN] baris ke-${i}: ${now}`);
+      shown++;
+    } else if (!now) {
+      console.log(`   [DIHAPUS ] baris ke-${i}: ${before.content}`);
+      shown++;
+    } else if (before.content !== now) {
+      console.log(`   [DIUBAH  ] baris ke-${i}:`);
+      console.log(`        asli : ${before.content}`);
+      console.log(`        baru : ${now}`);
+      shown++;
+    }
+  }
+  if (shown === 0) console.log("   (tidak ada baris yang berbeda dari salinan MongoDB)");
 }
 
 // ---------------------------------------------------------------------------
 // Mode: watch
 // ---------------------------------------------------------------------------
-async function cmdWatch(logFile, logId) {
-  const { provider, wallet, contract } = await connectEthereum();
+async function cmdWatch(logFile, logId, intervalSec, maxIter) {
+  const { provider, wallet, contract } = await core.connect();
+  await provider.getNetwork();
   await connectMongo();
-  
-  console.log("─".repeat(70));
-  console.log("MODE     : watch (Cek Integritas Merkle Tree)");
-  console.log("Akun     :", wallet.address);
-  console.log("File log :", logFile);
-  console.log("logId    :", logId);
-  console.log("─".repeat(70));
 
-  const dbLog = await LogModel.findOne({ logId });
-  if (!dbLog) die(`Log ID ${logId} tidak ditemukan di database MongoDB.`);
+  core.printBanner(
+    "MODE     : watch   (logHash = Merkle Root, interval " + intervalSec + "s)",
+    [
+      ["Kontrak", core.CONTRACT_ADDRESS],
+      ["Akun", wallet.address + " | role: " + (await core.roleNameSafe(contract, wallet.address))],
+      ["File log", logFile],
+      ["logId", logId],
+      ["MongoDB", dbLabel()],
+    ]
+  );
 
-  const lines = getLogLines(logFile);
-  
-  // Jika file hilang
-  if (!lines) {
-    console.log("🔴 FILE LOG HILANG! Mengirim alarm ke on-chain...");
-    const tx = await contract.verifyLogIntegrity(logId, "0x__LOG_FILE_MISSING__");
-    await tx.wait();
-    console.log("✅ Alarm Tampering terkirim on-chain.");
-    process.exit(0);
-  }
+  let iteration = 0;
+  let tamperCount = 0;
 
-  // Kalkulasi ulang Merkle Root
-  const leaves = lines.map(line => sha256(line));
-  const tree = new MerkleTree(leaves, sha256, { sortPairs: true });
-  const currentRootHash = tree.getHexRoot() || "0x0000000000000000000000000000000000000000000000000000000000000000";
+  const tick = async () => {
+    iteration++;
+    const info = core.hashForMode(MODE, logFile);
+    const stamp = new Date().toLocaleTimeString("id-ID");
 
-  // Cek integritas gratis (View function)
-  let isMatch = false;
-  try {
-    isMatch = await contract.verifyLogIntegrityView(logId, currentRootHash);
-  } catch (err) {
-    die(explainError(contract, err));
-  }
-
-  if (isMatch) {
-    console.log("🟢 AMAN. Merkle Root log server cocok dengan on-chain.");
-  } else {
-    console.log(`🔴 TAMPERED! Merkle Root server (${currentRootHash}) ≠ on-chain.`);
-    
-    // Temukan detail perubahan (baris mana yang beda)
-    console.log("🔍 Melakukan Analisis Baris Log...");
-    for (let i = 0; i < Math.max(lines.length, dbLog.lines.length); i++) {
-       const dbLine = dbLog.lines[i];
-       const curLine = lines[i];
-       if (!dbLine) {
-         console.log(`   [TAMBAHAN] Baris ke-${i}: ${curLine}`);
-       } else if (!curLine) {
-         console.log(`   [DIHAPUS] Baris ke-${i} dihapus.`);
-       } else if (dbLine.content !== curLine) {
-         console.log(`   [DIUBAH] Baris ke-${i}:`);
-         console.log(`       Asli: ${dbLine.content}`);
-         console.log(`       Baru: ${curLine}`);
-       }
+    // File hilang / tanpa baris: langsung dianggap tampering (truncate log =
+    // alat paling umum untuk menghapus jejak). Tidak perlu tanya kontrak.
+    if (info.missing || info.empty) {
+      tamperCount++;
+      if (info.missing) {
+        console.log(`[${stamp}] #${iteration} 🔴 FILE LOG HILANG! ${logFile} tidak ada di server`);
+      } else {
+        console.log(`[${stamp}] #${iteration} 🔴 FILE LOG KOSONG! ${logFile} ada tapi 0 baris berisi`);
+      }
+      console.log(`            → mengirim ${info.hash} sebagai bukti dan memicu alarm on-chain…`);
+      return sendAlarm(info.hash);
     }
 
-    console.log("⏳ Mengirim transaksi alarm (verifyLogIntegrity) ke on-chain...");
+    // Cek GRATIS dulu (view, 0 gas)
+    let isMatch;
     try {
-      const tx = await contract.verifyLogIntegrity(logId, currentRootHash);
-      await tx.wait();
-      console.log("✅ Alarm Tampering berhasil dicatat di blockchain.");
-    } catch(err) {
-       console.error("❌ Gagal mengirim alarm:", explainError(contract, err));
+      isMatch = await contract.verifyLogIntegrityView(logId, info.hash);
+    } catch (err) {
+      core.die(core.explainError(contract, err));
     }
-  }
 
-  mongoose.disconnect();
+    if (isMatch) {
+      console.log(`[${stamp}] #${iteration} 🟢 AMAN     Merkle Root cocok (${core.short(info.hash)})`);
+      return;
+    }
+
+    // Bukan tampering, tapi logId ini dikelola skrip mode lain?
+    const mismatch = await core.detectModeMismatch(contract, logId, logFile, MODE);
+    if (mismatch) {
+      console.log(`[${stamp}] #${iteration} ⚠️  SALAH SKRIP — logId ini direkam dengan mode "${mismatch.otherMode}"`);
+      console.log("            hash on-chain cocok dengan hasil hitung mode itu, jadi isi file TIDAK berubah.");
+      console.log("            Alarm tidak dikirim. Pakai skrip logCollector.js untuk logId ini.");
+      return;
+    }
+
+    tamperCount++;
+    console.log(`[${stamp}] #${iteration} 🔴 TAMPERED! Merkle Root server ${core.short(info.hash)} ≠ on-chain`);
+    console.log("   🔍 Membandingkan baris log dengan salinan off-chain…");
+    await printLineDiff(logId, info.lines);
+    await sendAlarm(info.hash);
+  };
+
+  const sendAlarm = async (hash) => {
+    try {
+      const tx = await contract.verifyLogIntegrity(logId, hash);
+      const rc = await tx.wait();
+      for (const log of rc.logs) {
+        try {
+          const parsed = contract.interface.parseLog(log);
+          if (parsed && parsed.name === "TamperingDetected") {
+            console.log("            ⚠️  event TamperingDetected dipancarkan:");
+            console.log("                logId       :", parsed.args[0]);
+            console.log("                hash ASLI   :", parsed.args[1]);
+            console.log("                hash SERVER :", parsed.args[2]);
+          }
+        } catch (_) {
+          /* log dari kontrak lain, abaikan */
+        }
+      }
+      console.log("            ✅ alarm tercatat on-chain (gas " + rc.gasUsed.toString() + ")");
+      const link = core.explorerLink(tx.hash);
+      if (link) console.log("               " + link);
+      console.log("            → dashboard SOC (Joseph) menerima event ini real-time.");
+    } catch (err) {
+      console.error("            ❌ gagal mengirim transaksi:", core.explainError(contract, err));
+    }
+  };
+
+  const finish = async () => {
+    console.log("─".repeat(70));
+    console.log(`Selesai. ${iteration} iterasi, ${tamperCount} alarm.`);
+    await closeMongo();
+  };
+
+  await tick();
+  if (maxIter > 0 && iteration >= maxIter) return finish();
+
+  const timer = setInterval(async () => {
+    await tick();
+    if (maxIter > 0 && iteration >= maxIter) {
+      clearInterval(timer);
+      await finish();
+      process.exit(0);
+    }
+  }, intervalSec * 1000);
 }
 
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 async function main() {
-  const [mode, logFile, logId] = process.argv.slice(2);
+  // buang flag (mis. --no-db) supaya posisi argumen tetap
+  const [mode, logFile, logId, intervalArg, maxIterArg] = process.argv
+    .slice(2)
+    .filter((a) => !a.startsWith("--"));
 
   if (mode === "record") {
-    if (!logFile || !logId) die("Pakai: node merkleCollector.js record <fileLog> <logId>");
+    if (!logFile || !logId) core.die("Pakai: node merkleCollector.js record <fileLog> <logId>");
     await cmdRecord(logFile, logId);
   } else if (mode === "watch") {
-    if (!logFile || !logId) die("Pakai: node merkleCollector.js watch <fileLog> <logId>");
-    await cmdWatch(logFile, logId);
+    if (!logFile || !logId) {
+      core.die("Pakai: node merkleCollector.js watch <fileLog> <logId> [intervalDetik] [maxIterasi] [--no-db]");
+    }
+    await cmdWatch(logFile, logId, core.argNumber(intervalArg, 5), core.argNumber(maxIterArg, 0));
   } else {
     console.log(`
-merkleCollector.js — Backend Log Collector (Tamper-Proof SIEM dApp)
+merkleCollector.js — Backend Log Collector (logHash = Merkle Root)
 
   node merkleCollector.js record <fileLog> <logId>
-  node merkleCollector.js watch  <fileLog> <logId>
+  node merkleCollector.js watch  <fileLog> <logId> [intervalDetik] [maxIterasi] [--no-db]
+
+  [intervalDetik] default 5 · [maxIterasi] default 0 (jalan terus)
+  --no-db        : paksa jalan tanpa MongoDB (diff per baris tidak tersedia)
+Env: RPC_URL, CONTRACT_ADDRESS, PRIVATE_KEY [, ABI_PATH, MONGO_URI]
+      — atau isi integration/backend/.env
 `);
   }
 }
 
-main().catch((e) => die(e.message || String(e)));
+main().catch((e) => core.die(e.message || String(e)));
