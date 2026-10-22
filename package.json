@@ -6,7 +6,8 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
-    "lint:backend": "node --check integration/backend/logCollector.js && node --check integration/backend/merkleCollector.js"
+    "test:backend": "node integration/backend/test/core.test.js",
+    "lint:backend": "node --check integration/backend/lib/collector-core.js && node --check integration/backend/logCollector.js && node --check integration/backend/merkleCollector.js && node --check integration/backend/test/core.test.js"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",
