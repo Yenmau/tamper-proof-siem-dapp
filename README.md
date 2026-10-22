@@ -22,8 +22,9 @@ hash server tidak akan cocok lagi dengan hash on-chain → event
 | 5 | Frontend Engineer (SOC Dashboard) | Joseph | React/HTML+Tailwind, login MetaMask, alarm real-time |
 | 6 | Cybersecurity Auditor & QA Lead | Nat | koordinasi repo, threat modeling, laporan audit (CVSS v4.0) |
 
-> Repo ini fokus ke **pekerjaan #1 (Smart Contract)**. Folder `backend/` dan
-> `frontend/` belum ada di sini — dipegang #2 dan #5.
+> Titik sambung ke tim ada di [`integration/`](integration/) — `backend/`
+> (kode #2 Yasin) dan `frontend/` (SOC Dashboard #5 Joseph). Folder
+> `backend/` dan `frontend/` di root repo tidak dipakai.
 
 ---
 
@@ -71,6 +72,9 @@ Role lain diberikan oleh ADMIN lewat `setRole` / `addAnalyst` / `addAuditor` /
 - **Solidity** `0.8.26` (optimizer runs 200, EVM `paris`)
 - **Remix IDE** — tempat kerja utama Vincent: https://remix.ethereum.org
 - **Hardhat + ethers v6 + chai** — untuk `npm test` (opsional)
+- **Node.js 20+** — skrip backend di `integration/backend/`
+- **MongoDB** — hanya untuk jalur Merkle (`merkleCollector.js`)
+- **CI** — GitHub Actions menjalankan 15 test kontrak + syntax check backend
 - **Testnet** — Ethereum Sepolia (chainId `11155111`) atau Polygon Amoy (`80002`)
 
 ---
@@ -95,14 +99,16 @@ tamper-proof-siem-dapp/
 │   ├── SIEMLogger.json           ← ABI untuk Yasin & Joseph
 │   └── SIEMLogger.bytecode.txt   ← bytecode hasil compile
 ├── integration/                  ← kit sambung ke backend & frontend
-│   ├── backend/logCollector.js   ← skrip Node.js (Yasin)
-│   ├── backend/.env.example
-│   ├── backend/sample/auth.log   ← log contoh buat uji coba
-│   └── frontend/index.html       ← SOC Dashboard (Joseph)
+│   ├── backend/logCollector.js   ← #2: SHA-256 file utuh → kontrak
+│   ├── backend/merkleCollector.js← #2: Merkle Tree + MongoDB (README_MERKLE.md)
+│   ├── backend/.env.example      ← template konfigurasi (salin jadi .env)
+│   ├── frontend/index.html       ← #5: SOC Dashboard (ABI inline, default Sepolia)
+│   └── README.md                 ← panduan integrasi + uji end-to-end lokal
 ├── scripts/
 │   └── deploy.js                 ← deploy tanpa Remix (opsional)
 ├── test/
 │   └── SIEMLogger.test.js        ← 15 test otomatis (RBAC + fungsi inti + gas)
+├── .github/workflows/ci.yml      ← CI: npm test + syntax check backend + guard encoding
 ├── deployments.json              ← alamat kontrak per network (diisi saat deploy)
 ├── DEPLOY.md                     ← panduan deploy testnet + set role + serah terima
 ├── CHANGELOG.md                  ← riwayat perubahan v1.0 → v2.0 → v3.0
@@ -223,9 +229,14 @@ Detail lengkap di [`integration/README.md`](integration/README.md).
 
 | Item | Untuk | Isi |
 |---|---|---|
-| [`integration/backend/logCollector.js`](integration/backend/logCollector.js) | Yasin (#2) | Baca file log → SHA-256 → `recordLogHash` / `verifyLogIntegrity`; mendeteksi tampering dan memicu alarm on-chain |
+| [`integration/backend/logCollector.js`](integration/backend/logCollector.js) | Yasin (#2) | Baca file log → SHA-256 file utuh → `recordLogHash` / `verifyLogIntegrity`; mendeteksi tampering dan memicu alarm on-chain |
+| [`integration/backend/merkleCollector.js`](integration/backend/merkleCollector.js) | Yasin (#2) | Versi Merkle Tree: hash per baris → Merkle Root on-chain, baris mentah di MongoDB. Catatan: [`README_MERKLE.md`](integration/backend/README_MERKLE.md) |
 | [`integration/frontend/index.html`](integration/frontend/index.html) | Joseph (#5) | SOC Dashboard: login MetaMask, tabel status log, banner alarm real-time dari event `TamperingDetected` |
 | [`scripts/deploy.js`](scripts/deploy.js) | semua | Deploy tanpa Remix (buat node lokal) |
+
+> ⚠️ Satu `logId` hanya boleh dikelola **satu** skrip backend. `logCollector.js`
+> mengirim SHA-256 file utuh, `merkleCollector.js` mengirim Merkle Root — untuk
+> file yang sama keduanya berbeda, jadi pengecekan silang = alarm palsu.
 
 **Uji seluruh alur secara lokal (2 terminal, tanpa testnet & tanpa MetaMask):**
 

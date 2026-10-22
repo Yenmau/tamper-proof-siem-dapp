@@ -2,20 +2,21 @@
   "name": "tamper-proof-siem-dapp",
   "version": "3.0.0",
   "private": true,
-  "description": "Tamper-Proof SIEM dApp — SIEMLogger smart contract (Solidity)",
+  "description": "Tamper-Proof SIEM dApp — SIEMLogger smart contract + kit integrasi backend/frontend",
   "scripts": {
     "compile": "hardhat compile",
-    "test": "hardhat test"
+    "test": "hardhat test",
+    "lint:backend": "node --check integration/backend/logCollector.js && node --check integration/backend/merkleCollector.js"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",
     "@nomicfoundation/hardhat-ethers": "^3.0.8",
     "chai": "^4.5.0",
-    "ethers": "^6.13.4",
     "hardhat": "^2.22.19"
   },
   "dependencies": {
     "dotenv": "^18.0.7",
+    "ethers": "^6.13.4",
     "merkletreejs": "^0.6.0",
     "mongoose": "^9.11.1"
   }
