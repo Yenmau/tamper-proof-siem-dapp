@@ -1,0 +1,27 @@
+services:
+  victim-server:
+    build: ./victim-server
+    container_name: siem-victim
+    hostname: victim-server
+    restart: unless-stopped
+    ports:
+      # Hanya localhost: ini server simulasi, jangan sampai port SSH-nya terbuka
+      # ke jaringan sekitar (password-nya sengaja lemah).
+      - "127.0.0.1:2222:22"   # SSH target untuk Red Team (brute force)
+    healthcheck:
+      test: ["CMD-SHELL", "supervisorctl status | grep -qvE 'FATAL|STOPPED'"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    environment:
+      LOG_FILE: /var/log/auth.log
+      BATCH_DIR: /siem-batches
+      BATCH_SIZE: ${BATCH_SIZE:-20}
+      FLUSH_INTERVAL_MS: ${FLUSH_INTERVAL_MS:-30000}
+    volumes:
+      - victim-logs:/var/log
+      - ./siem-batches:/siem-batches   # file batch -> dibaca backend (merkleCollector.js)
+
+volumes:
+  victim-logs:
