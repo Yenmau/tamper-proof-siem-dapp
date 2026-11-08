@@ -22,5 +22,9 @@ module.exports = {
   },
   networks: {
     hardhat: { chainId: 31337 },
+    // Dipakai `npx hardhat run scripts/deploy.js --network localhost`.
+    // RPC_URL boleh diarahkan ke node lain (mis. service `chain` di docker compose);
+    // default tetap node lokal 127.0.0.1:8545 seperti sebelumnya.
+    localhost: { url: process.env.RPC_URL || "http://127.0.0.1:8545" },
   },
 };
