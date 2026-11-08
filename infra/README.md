@@ -5,6 +5,12 @@ Server Linux "korban" di Docker untuk proyek Tamper-Proof SIEM:
 **log-shipper** (Node.js) yang memotong `auth.log` menjadi **file batch**.
 Ketiganya dijalankan otomatis oleh supervisord (restart sendiri kalau mati).
 
+> Penting: `sshd` dijalankan sebagai `sshd -D` **tanpa** flag `-e`. Dengan `-e`
+> sshd menulis log ke stderr container, sehingga baris `Failed password` /
+> `Invalid user` tidak masuk `auth.log` dan percobaan brute force tidak pernah
+> ter-batch. Sudah diuji: dengan `-D` saja, `Failed password for victim from …`
+> muncul di `/var/log/auth.log` dan ikut jadi batch.
+
 ## Alur
 ```
 SSH gagal -> rsyslog -> /var/log/auth.log -> shipper -> infra/siem-batches/auth-<waktu>-NNN.log
@@ -19,6 +25,14 @@ Batch dibuat tiap `BATCH_SIZE` baris (default 20) atau tiap `FLUSH_INTERVAL_MS` 
     cd infra
     docker compose up -d --build
     docker exec siem-victim supervisorctl status     # 3 service harus RUNNING
+    docker inspect --format '{{.State.Health.Status}}' siem-victim   # healthy
+
+Port SSH sengaja hanya di-bind ke **127.0.0.1:2222** (bukan ke seluruh jaringan),
+karena akun di dalamnya memakai password lemah.
+
+Kalau mengubah config supervisord saat container sudah jalan, `supervisorctl
+restart <program>` saja **tidak cukup** — supervisord menyimpan config di memori.
+Pakai `docker compose restart` atau `supervisorctl reread && supervisorctl update`.
 
 ## Buat log
     ssh -p 2222 victim@localhost                     # password salah -> tercatat
@@ -46,4 +60,12 @@ Uji lokal tanpa testnet: `npx hardhat node` + `npx hardhat run scripts/deploy.js
 ## Catatan
 - Akun `victim:password123` dan `admin:admin` sengaja lemah, hanya untuk simulasi.
 - Tidak ada private key di Docker; `record` dijalankan backend (#2) dengan akun SOC_ANALYST.
+- Container berjalan sebagai **root** karena `sshd`, `rsyslogd`, dan `supervisord`
+  butuh menulis ke `/var/log` dan membuka port 22. Ini server korban, bukan
+  container produksi.
+- Baris log yang masuk **sebelum** shipper sempat jalan (beberapa ratus milidetik
+  saat boot) sengaja dilewati; shipper mencetak `lewati N byte log lama`.
+- Nama batch memakai timestamp detik + nomor urut. Nomor urut di-reset saat
+  container restart, jadi shipper memeriksa dulu: kalau nama sudah ada, nomor
+  dinaikkan supaya batch lama (yang mungkin sudah direkam on-chain) tidak tertimpa.
 - Reset bersih: `docker compose down -v` lalu hapus isi `infra/siem-batches/` (kecuali `.gitkeep`).

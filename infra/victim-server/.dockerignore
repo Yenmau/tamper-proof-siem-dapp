@@ -1,0 +1,8 @@
+# Jangan pernah ikut ke image: isi log, batch hasil shipper, dan file env.
+siem-batches/
+*.log
+.env
+.env.*
+node_modules/
+npm-debug.log*
+.git/

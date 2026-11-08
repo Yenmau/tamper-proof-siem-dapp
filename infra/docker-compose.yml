@@ -5,7 +5,15 @@ services:
     hostname: victim-server
     restart: unless-stopped
     ports:
-      - "2222:22"          # SSH target untuk Red Team (brute force)
+      # Hanya localhost: ini server simulasi, jangan sampai port SSH-nya terbuka
+      # ke jaringan sekitar (password-nya sengaja lemah).
+      - "127.0.0.1:2222:22"   # SSH target untuk Red Team (brute force)
+    healthcheck:
+      test: ["CMD-SHELL", "supervisorctl status | grep -qvE 'FATAL|STOPPED'"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     environment:
       LOG_FILE: /var/log/auth.log
       BATCH_DIR: /siem-batches
