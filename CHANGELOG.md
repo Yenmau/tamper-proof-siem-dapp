@@ -6,10 +6,41 @@ Semua perubahan penting pada smart contract. Format mengikuti
 
 ---
 
-## [Unreleased] — perapian `integration/backend` + CI (bukan perubahan kontrak)
+## [Unreleased] — fitur & perapian `integration/backend` (bukan perubahan kontrak)
 
 `contracts/SIEMLogger.sol` **tidak disentuh**; ABI, bytecode, dan alamat Sepolia
 tetap sama. Bagian ini mencatat perubahan di sekitarnya supaya jejaknya jelas.
+
+### Added — Merkle proof per baris + batch record (menutup sisa pekerjaan #2)
+
+- **Merkle proof per baris.** Sebelumnya klaim "baris ke-i tidak berubah" hanya
+  berasal dari perbandingan teks dengan salinan MongoDB — padahal DB off-chain itu
+  sendiri bisa ditulis ulang penyerang. Sekarang `record` menyimpan **proof**
+  (jalur sibling hash) untuk tiap baris, dan mode baru
+  `prove <fileLog> <logId> [indexBaris]` memverifikasi proof tersebut terhadap
+  **Merkle Root on-chain**: baris yang cocok TERBUKTI identik, baris yang diubah
+  terbukti berbeda. Mode ini **hanya-baca** (tanpa `PRIVATE_KEY`), tanpa MongoDB,
+  dan fail-closed kalau artefak bukti diubah. Diuji end-to-end di node lokal:
+  file diubah di baris ke-2 → `prove` melaporkan baris 0 & 2 tetap terbukti,
+  baris 1 gagal (exit code 1).
+- **Artefak bukti `<fileLog>.<logId>.proofs.json`** selalu ditulis saat `record`
+  dan `batch` (MongoDB tidak wajib). Nama file memuat `logId` supaya pola rotasi
+  (`auth.log#2026-10-09` vs `auth.log#2026-10-10`) tidak saling menimpa; `logId`
+  di-*slug* agar tidak bisa keluar dari folder (path traversal).
+- **Mode `batch <manifest.txt>`** di `logCollector.js` **dan** `merkleCollector.js`:
+  banyak `logId` dalam satu transaksi `recordLogHashBatch`. Manifest = teks,
+  `<logId> <path file log>` per baris, `#` untuk komentar. `logId` yang sudah
+  terdaftar on-chain serta file yang hilang/kosong disaring lebih dulu lewat
+  pemanggilan `view` (gratis), karena kontrak bersifat *all-or-nothing*. Gas
+  terukur di node lokal: 173.122 vs 208.756 gas per log untuk 3 log (hemat ~17%).
+- `lib/collector-core.js` bertambah: `leafHash`/`leafHashHex`, `merkleProofOfLine`,
+  `verifyLineProof`, `buildProofArtifacts`, `saveProofArtifacts`,
+  `loadProofArtifacts`, `slugLogId`, `proofsPathFor`, `parseManifest`,
+  `prepareBatchEntries`, `connectReadOnly`, `onChainEntry`.
+- Skema MongoDB `logbatches` menyimpan `lines[].proof` + `algorithm`.
+- Unit test backend **13 → 28** (proof per baris, artefak, manifest, batch),
+  semuanya tanpa jaringan/MongoDB.
+- `.gitignore`: `*.proofs.json` (artefak runtime collector).
 
 ### Fixed
 
@@ -61,7 +92,7 @@ tetap sama. Bagian ini mencatat perubahan di sekitarnya supaya jejaknya jelas.
   karena `"0x"` truthy): `record` menolak dengan pesan jelas, `watch`
   mengirim penanda `0x__LOG_FILE_EMPTY__`, dan panjang root diverifikasi dulu
   (harus 66 karakter) sebelum dikirim.
-- Unit test backend: `npm run test:backend` (13 test, tanpa jaringan/MongoDB),
+- Unit test backend: `npm run test:backend` (28 test, tanpa jaringan/MongoDB),
   ditambahkan sebagai langkah di CI.
 
 ### Known issues (belum diperbaiki, sengaja didokumentasikan)

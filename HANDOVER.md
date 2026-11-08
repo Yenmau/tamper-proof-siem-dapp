@@ -49,6 +49,14 @@ Catatan operasional:
   berhenti dengan `ECONNREFUSED 127.0.0.1:27017`. Detail:
   [`integration/backend/README_MERKLE.md`](integration/backend/README_MERKLE.md).
 
+Mode di luar `record`/`watch` (sudah ada di `main`):
+
+- `prove <fileLog> <logId> [indexBaris]` — **bukti kriptografis per baris**
+  (Merkle proof → Merkle Root on-chain). Hanya-baca: tidak perlu `PRIVATE_KEY`,
+  tidak perlu MongoDB — cocok dipakai auditor (#6 Nat).
+- `batch <manifest.txt>` — banyak `logId` dalam **satu** transaksi
+  `recordLogHashBatch` (hemat ~17% gas/log); ada di kedua skrip.
+
 **Bisa mulai SEKARANG tanpa role.** Uji di node lokal (`npx hardhat node`) — di situ akunmu
 otomatis admin, jadi `recordLogHash` / `verifyLogIntegrity` bisa langsung dicoba. Role
 SOC_ANALYST baru diperlukan saat transaksi ke kontrak **Sepolia** milik Vincent.

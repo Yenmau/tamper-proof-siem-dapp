@@ -102,7 +102,7 @@ tamper-proof-siem-dapp/
 │   ├── backend/logCollector.js   ← #2: SHA-256 file utuh → kontrak
 │   ├── backend/merkleCollector.js← #2: Merkle Tree + MongoDB (opsional)
 │   ├── backend/lib/collector-core.js ← kode bersama kedua collector
-│   ├── backend/test/core.test.js ← 13 unit test backend (tanpa jaringan)
+│   ├── backend/test/core.test.js ← 28 unit test backend (tanpa jaringan)
 │   ├── backend/.env.example      ← template konfigurasi (salin jadi .env)
 │   ├── frontend/index.html       ← #5: SOC Dashboard (ABI inline, default Sepolia)
 │   └── README.md                 ← panduan integrasi + uji end-to-end lokal
@@ -233,8 +233,14 @@ Detail lengkap di [`integration/README.md`](integration/README.md).
 |---|---|---|
 | [`integration/backend/logCollector.js`](integration/backend/logCollector.js) | Yasin (#2) | Baca file log → SHA-256 file utuh → `recordLogHash` / `verifyLogIntegrity`; mendeteksi tampering dan memicu alarm on-chain |
 | [`integration/backend/merkleCollector.js`](integration/backend/merkleCollector.js) | Yasin (#2) | Versi Merkle Tree: hash per baris → Merkle Root on-chain, baris mentah di MongoDB. Catatan: [`README_MERKLE.md`](integration/backend/README_MERKLE.md) |
+| [`integration/backend/lib/collector-core.js`](integration/backend/lib/collector-core.js) | Yasin (#2) | Kode bersama kedua collector + Merkle proof + manifest batch |
 | [`integration/frontend/index.html`](integration/frontend/index.html) | Joseph (#5) | SOC Dashboard: login MetaMask, tabel status log, banner alarm real-time dari event `TamperingDetected` |
 | [`scripts/deploy.js`](scripts/deploy.js) | semua | Deploy tanpa Remix (buat node lokal) |
+
+> Mode `prove` di `merkleCollector.js` (buktikan baris ke-i identik dengan yang
+> direkam — verifikasi Merkle proof terhadap Merkle Root **on-chain**, hanya-baca,
+> tanpa private key) dan mode `batch` di kedua collector (banyak `logId` dalam satu
+> transaksi) dijelaskan di [`integration/README.md`](integration/README.md).
 
 > ⚠️ Satu `logId` hanya boleh dikelola **satu** skrip backend. `logCollector.js`
 > mengirim SHA-256 file utuh, `merkleCollector.js` mengirim Merkle Root — untuk

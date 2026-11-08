@@ -24,6 +24,10 @@
  * ---------------------------------------------------------------------------
  *   node logCollector.js record <fileLog> <logId>
  *   node logCollector.js watch  <fileLog> <logId> [intervalDetik] [maxIterasi]
+ *   node logCollector.js batch  <manifest.txt>
+ *
+ * `batch` mendaftarkan banyak logId dalam SATU transaksi (recordLogHashBatch) —
+ * manifest = file teks, satu entri per baris: <logId> <path file log>.
  *
  * maxIterasi 0 / tidak diisi = jalan terus (daemon). Contoh:
  *   node logCollector.js record ./sample/auth.log "auth.log#2026-10-09"
@@ -182,6 +186,67 @@ async function cmdWatch(logFile, logId, intervalSec, maxIter) {
 }
 
 // ---------------------------------------------------------------------------
+// Mode: batch — banyak logId dalam SATU transaksi (recordLogHashBatch)
+// ---------------------------------------------------------------------------
+/**
+ * Manifest = file teks, satu entri per baris: `<logId> <path file log>`.
+ * Hemat ~19% gas per log dibanding record satu per satu (lihat README).
+ */
+async function cmdBatch(manifestPath) {
+  const fs = require("fs");
+  if (!fs.existsSync(manifestPath)) core.die("Manifest tidak ditemukan: " + manifestPath);
+  const entries = core.parseManifest(fs.readFileSync(manifestPath, "utf8"));
+
+  const { provider, wallet, contract } = await core.connect();
+  const net = await provider.getNetwork();
+  const { ok, bad } = core.prepareBatchEntries(MODE, entries);
+
+  // Skrining GRATIS (view): kontrak revert all-or-nothing, jadi satu logId yang
+  // sudah terdaftar akan menggagalkan seluruh batch kalau ikut dikirim.
+  const sudahAda = [];
+  const akanKirim = [];
+  for (const e of ok) {
+    if (await core.onChainHashOf(contract, e.logId)) sudahAda.push(e);
+    else akanKirim.push(e);
+  }
+
+  core.printBanner("MODE     : batch   (logHash = SHA-256 seluruh file, 1 transaksi)", [
+    ["Kontrak", core.CONTRACT_ADDRESS],
+    ["Chain", net.chainId.toString()],
+    ["Akun", wallet.address + " | role: " + (await core.roleNameSafe(contract, wallet.address))],
+    ["Manifest", manifestPath],
+    ["Entri aktif", String(entries.length)],
+    ["Akan dikirim", String(akanKirim.length)],
+  ]);
+
+  for (const e of akanKirim) console.log("  • " + e.logId + "  " + core.short(e.hash));
+  for (const e of sudahAda) console.log("  ⏭️  DILEWATI (sudah terdaftar on-chain): " + e.logId);
+  for (const e of bad) console.log("  ⚠️  DILEWATI (" + e.reason + "): " + e.logId + " → " + e.file);
+
+  if (akanKirim.length === 0) {
+    console.log("Tidak ada entri yang perlu dikirim. Selesai.");
+    return;
+  }
+
+  try {
+    const tx = await contract.recordLogHashBatch(
+      akanKirim.map((e) => e.logId),
+      akanKirim.map((e) => e.hash)
+    );
+    console.log("⏳ transaksi batch terkirim:", tx.hash);
+    const rc = await tx.wait();
+    const gas = BigInt(rc.gasUsed.toString());
+    console.log("✅ " + akanKirim.length + " logId terkunci on-chain dalam 1 transaksi.");
+    console.log("   gas total : " + gas.toString());
+    console.log("   per log   : " + (gas / BigInt(akanKirim.length)).toString() + " gas");
+    const link = core.explorerLink(tx.hash);
+    if (link) console.log("   " + link);
+  } catch (err) {
+    core.die(core.explainError(contract, err));
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 async function main() {
@@ -195,14 +260,20 @@ async function main() {
       core.die("Pakai: node logCollector.js watch <fileLog> <logId> [intervalDetik] [maxIterasi]");
     }
     await cmdWatch(logFile, logId, core.argNumber(intervalArg, 5), core.argNumber(maxIterArg, 0));
+  } else if (mode === "batch") {
+    if (!logFile) core.die("Pakai: node logCollector.js batch <manifest.txt>");
+    await cmdBatch(logFile);
   } else {
     console.log(`
 logCollector.js — Backend Log Collector (logHash = SHA-256 seluruh file)
 
   node logCollector.js record <fileLog> <logId>
   node logCollector.js watch  <fileLog> <logId> [intervalDetik] [maxIterasi]
+  node logCollector.js batch  <manifest.txt>
 
   [intervalDetik] default 5 · [maxIterasi] default 0 (jalan terus)
+  batch  : banyak logId dalam satu transaksi (recordLogHashBatch) — hemat gas
+Manifest batch = file teks, satu entri per baris:  <logId> <path file log>
 Env: RPC_URL, CONTRACT_ADDRESS, PRIVATE_KEY [, ABI_PATH]
       — atau isi integration/backend/.env
 `);
