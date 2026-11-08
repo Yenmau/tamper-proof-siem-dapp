@@ -7,9 +7,11 @@ frontend (Joseph). Dua-duanya memakai ABI yang sama:
 ```
 integration/
 ├── backend/
-│   ├── logCollector.js      ← versi dasar: SHA-256 file utuh (tanpa DB)
-│   ├── merkleCollector.js   ← versi lanjutan: Merkle Tree + MongoDB (README_MERKLE.md)
-│   ├── README_MERKLE.md     ← penjelasan jalur Merkle + syarat MongoDB
+│   ├── logCollector.js      ← SKRIP 1: SHA-256 file utuh (tanpa DB)
+│   ├── merkleCollector.js   ← SKRIP 2: Merkle Tree + bukti per baris (README_MERKLE.md)
+│   ├── lib/collector-core.js← kode bersama kedua skrip (hash, proof, manifest, batch)
+│   ├── README_MERKLE.md     ← penjelasan jalur Merkle + Merkle proof per baris
+│   ├── test/core.test.js    ← 28 unit test tanpa jaringan (npm run test:backend)
 │   ├── .env.example         ← template konfigurasi (salin jadi .env)
 │   └── sample/auth.log      ← contoh file log untuk uji coba
 └── frontend/
@@ -93,12 +95,17 @@ Cukup `npm install` sekali di root repo. `ethers` (dipakai saat *runtime* oleh
 kedua skrip) ada di `dependencies`, jadi tetap terpasang walau server memakai
 `npm ci --omit=dev` / `NODE_ENV=production`.
 
-### Dua mode
+### Mode
 
 | Mode | Perintah | Kegunaan |
 |---|---|---|
 | `record` | `node logCollector.js record <fileLog> <logId>` | Mendaftarkan hash log untuk pertama kali (dikunci on-chain, tidak bisa diubah) |
 | `watch` | `node logCollector.js watch <fileLog> <logId> [intervalDetik] [maxIterasi]` | Loop: hitung ulang hash, bandingkan, picu alarm kalau beda |
+| `batch` | `node logCollector.js batch <manifest.txt>` | Banyak `logId` dalam **satu transaksi** (`recordLogHashBatch`) — hemat ±17% gas per log (diukur di node lokal: 173.122 vs 208.756 gas/log). Manifest = teks, satu entri per baris `<logId> <path file log>`, `#` untuk komentar |
+
+`merkleCollector.js` punya tiga-mode di atas **plus** `prove` (buktikan baris ke-i
+masih identik dengan yang direkam, hanya-baca) — lihat
+[`backend/README_MERKLE.md`](backend/README_MERKLE.md).
 
 Contoh `logId` yang rapi (biar bisa di-*rotate* harian):
 `auth.log#2026-10-09`, `syslog#2026-10-09`.
@@ -152,6 +159,11 @@ mengunci **Merkle Root** on-chain, dan menyimpan baris mentahnya di
 | `logCollector.js` | SHA-256 seluruh file | tidak dipakai |
 | `merkleCollector.js` | Merkle Root (dari hash tiap baris) | **opsional** (untuk diff per baris) |
 
+> `merkleCollector.js` **selalu** menulis file bukti
+> `<fileLog>.<logId>.proofs.json` saat `record`/`batch` — jadi Merkle proof
+> tetap bisa dipakai walau MongoDB tidak dipasang. Isi file bukti tidak perlu
+> dipercaya: yang jadi patokan verifikasi tetap Merkle Root on-chain.
+
 Keduanya sekarang: CLI sama (`record` / `watch [intervalDetik] [maxIterasi]`),
 memakai kode bersama di [`backend/lib/collector-core.js`](backend/lib/collector-core.js),
 dan punya unit test tanpa jaringan: `npm run test:backend`.
@@ -167,12 +179,14 @@ dan punya unit test tanpa jaringan: `npm run test:backend`.
 - [x] Merkle Tree per baris + Merkle Root sebagai `logHash` (`merkleCollector.js`)
 - [x] simpan detail baris log ke database off-chain (MongoDB) — sekarang **opsional**
 - [x] kode bersama dipindah ke `lib/collector-core.js` (dulu ~60% duplikat antar skrip)
-- [x] unit test backend tanpa jaringan: `npm run test:backend`
-- [ ] **Merkle proof per baris** — sekarang proof belum dibuat/diverifikasi,
-      jadi klaim "baris ke-i tidak berubah" belum terbukti secara kriptografis;
-      yang ada baru perbandingan teks dengan salinan MongoDB
-- [ ] kirim banyak log sekaligus lewat `recordLogHashBatch(ids, hashes)`
-      (hemat ±19% gas per log)
+- [x] unit test backend tanpa jaringan: `npm run test:backend` (28 test)
+- [x] **Merkle proof per baris** — `record` menyimpan proof tiap baris
+      (`<fileLog>.<logId>.proofs.json`, dan ke MongoDB kalau aktif), lalu
+      `prove <fileLog> <logId> [indexBaris]` memverifikasinya terhadap Merkle Root
+      **on-chain**. Baris yang cocok terbukti identik; yang diubah terbukti berbeda.
+      Tidak butuh MongoDB dan tidak butuh private key (hanya-baca).
+- [x] kirim banyak log sekaligus lewat `recordLogHashBatch(ids, hashes)` — mode
+      `batch <manifest.txt>` di kedua skrip (hemat ±17% gas per log)
 - [ ] jalankan skrip ini sebagai *service* (systemd / Docker) — bagian DevOps #3
 
 ---

@@ -13,6 +13,9 @@ coverage.json
 .env.*
 !.env.example
 
+# artefak runtime collector (di-generate saat `record`/`batch`)
+*.proofs.json
+
 # OS
 .DS_Store
 Thumbs.db

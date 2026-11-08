@@ -30,7 +30,7 @@ Pendekatan `merkleCollector.js` memodifikasi skema hashing menjadi lebih detail:
 
 ## 🚀 Cara Menjalankan
 
-Sama seperti script dasar sebelumnya, ada dua mode. Buka terminal di root project.
+Sama seperti script dasar sebelumnya, ada empat mode. Buka terminal di root project.
 
 ### 1. Mode Record (Menyimpan Log Baru)
 ```bash
@@ -40,6 +40,11 @@ Apa yang terjadi?
 - Script membaca `auth.log` dan memecahnya menjadi kumpulan baris.
 - Menyimpan setiap baris ke MongoDB ke dalam koleksi `logbatches`.
 - Membangun Merkle Tree, dan mengirim **Merkle Root** ke smart contract (on-chain).
+- Menulis **bukti Merkle per baris** ke `auth.log.auth.log-01.proofs.json`.
+
+> ⚠️ Jalankan `record` selagi file log masih **asli** — bukti dibuat dari isi file
+> saat itu. Kalau file sudah diubah penyerang lalu di-`record`, yang tersegel
+> on-chain adalah versi palsunya (tidak ada baseline pembanding).
 
 ### 2. Mode Watch (Verifikasi Keamanan)
 ```bash
@@ -53,6 +58,41 @@ Apa yang terjadi?
   - Script juga akan **membandingkan data file server dengan data asli di MongoDB** secara baris demi baris, dan menampilkan persis **baris mana yang telah diubah/dihapus/ditambah**.
 
 ---
+### 3. Mode Prove (Merkle proof per baris — bukti kriptografis)
+```bash
+node integration/backend/merkleCollector.js prove integration/backend/sample/auth.log "auth.log#01"
+node integration/backend/merkleCollector.js prove integration/backend/sample/auth.log "auth.log#01" 1
+```
+Apa yang terjadi?
+- Membaca Merkle Root **on-chain** (`getLogStatus`, gratis) dan artefak bukti
+  (MongoDB dulu, lalu `<fileLog>.<logId>.proofs.json`).
+- Untuk setiap baris: hitung `sha256(isi baris sekarang)`, lalu verifikasi proof-nya
+  sampai menghasilkan Merkle Root on-chain.
+- Hasil per baris: `✅ TERBUKTI identik` atau `🔴 TIDAK TERBUKTI` (ditambah tampilan
+  isi asli vs sekarang). Exit code `1` kalau ada baris yang gagal.
+- **Hanya-baca**: tidak butuh `PRIVATE_KEY`, tidak butuh MongoDB, tidak menulis apa
+  pun on-chain — auditor pun bisa menjalankannya.
+- Argumen opsional `[indexBaris]` untuk memeriksa satu baris saja. Bukti satu baris
+  jauh lebih pendek dari file: cukup sibling hash di jalur daun → root.
+
+### 4. Mode Batch (banyak logId dalam satu transaksi)
+```bash
+# manifest.txt — satu entri per baris: <logId> <path file log>
+#   auth.log#01 /var/log/auth.log
+#   syslog#01   /var/log/syslog
+node integration/backend/merkleCollector.js batch manifest.txt
+```
+Apa yang terjadi?
+- Tiap entri dihitung Merkle Root-nya, lalu **satu transaksi**
+  `recordLogHashBatch(ids, hashes)` mengunci semuanya (hemat ±17% gas per log:
+  173.122 vs 208.756 gas/log di node lokal).
+- `logId` yang sudah terdaftar on-chain otomatis dilewati (dicek lewat `view`,
+  gratis) karena kontrak bersifat *all-or-nothing*; file yang hilang/kosong juga
+  dilewati dengan alasannya tercetak.
+- Bukti per baris ikut ditulis untuk setiap entri.
+
+---
+
 *Dikembangkan oleh Tim Jobdesk #2 (Cryptographic & Backend Engineer).*
 
 ---
@@ -100,6 +140,18 @@ hasil Merkle diverifikasi dulu (harus 66 karakter) sebelum dikirim.
 **6. Baris log mentah disimpan plaintext di MongoDB.** Untuk klaim
 *tamper-proof*, perlu dicatat bahwa DB off-chain ini juga bisa ditulis ulang
 oleh penyerang; yang membuat alarm tetap valid adalah Merkle Root **on-chain**.
-Selain itu **Merkle proof belum dibuat/diverifikasi**, jadi kemampuan
-"menunjukkan baris mana yang diubah" saat ini berasal dari perbandingan teks
-dengan salinan MongoDB (bukan bukti kriptografis).
+Sejak mode `prove` ada, klaim "baris ke-i tidak berubah" **sudah** berupa bukti
+kriptografis (Merkle proof → root on-chain), bukan lagi sekadar perbandingan
+teks dengan salinan MongoDB. Perbandingan teks (dan MongoDB) sekarang hanya
+berguna untuk menampilkan sisi manusianya: isi asli vs isi sekarang.
+
+**7. File bukti `<fileLog>.<logId>.proofs.json` TIDAK perlu dipercaya.** Isinya
+proof + isi baris; penyerang yang bisa menulis file ini tetap tidak bisa membuat
+baris palsu lolos verifikasi, karena `prove` selalu mengecek proof itu terhadap
+Merkle Root **on-chain**. Kalau file bukti diubah, hasilnya justru
+`🔴 TIDAK TERBUKTI` (fail-closed). Nama file memuat `logId` supaya pola rotasi
+(`auth.log#2026-10-09` vs `#2026-10-10`) tidak saling menimpa.
+
+**8. `prove` butuh artefak bukti, `watch` tidak.** Kalau bukti belum pernah
+dibuat (mis. `record` dijalankan sebelum fitur ini ada), `prove` berhenti dengan
+pesan jelas dan menyarankan `record` ulang memakai `logId` baru.
