@@ -43,3 +43,27 @@ jobs:
               exit 1
               ;;
           esac
+
+  dashboard:
+    name: Build dashboard (React + Vite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: integration/frontend/package-lock.json
+
+      - name: Install dependensi dashboard
+        working-directory: integration/frontend
+        run: npm ci
+
+      - name: Build (vite build)
+        working-directory: integration/frontend
+        run: npm run build
+
+      - name: Cek config.json ikut ter-build
+        working-directory: integration/frontend
+        run: test -f dist/config.json && test -f dist/index.html && echo "dist ok"

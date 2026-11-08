@@ -106,7 +106,8 @@ tamper-proof-siem-dapp/
 │   ├── backend/lib/batch-queue.js ← logika antrean service (ada unit test)
 │   ├── backend/test/*.test.js    ← 40 unit test backend (tanpa jaringan)
 │   ├── backend/.env.example      ← template konfigurasi (salin jadi .env)
-│   ├── frontend/index.html       ← #5: SOC Dashboard (ABI inline, default Sepolia)
+│   ├── frontend/                 ← #5: SOC Dashboard React+Vite (src/, Dockerfile, nginx.conf)
+│   │   └── legacy-dashboard.html ← dashboard versi satu-file (referensi)
 │   └── README.md                 ← panduan integrasi + uji end-to-end lokal
 ├── scripts/
 │   └── deploy.js                 ← deploy tanpa Remix (opsional)
@@ -237,7 +238,7 @@ Detail lengkap di [`integration/README.md`](integration/README.md).
 | [`integration/backend/merkleCollector.js`](integration/backend/merkleCollector.js) | Yasin (#2) | Versi Merkle Tree: hash per baris → Merkle Root on-chain, baris mentah di MongoDB. Catatan: [`README_MERKLE.md`](integration/backend/README_MERKLE.md) |
 | [`integration/backend/collectorService.js`](integration/backend/collectorService.js) | Yasin (#2) + Rafif (#3) | Daemon: batch baru → `recordLogHashBatch`, cek berkala → alarm. Dipakai oleh stack gabungan `docker compose` |
 | [`integration/backend/lib/collector-core.js`](integration/backend/lib/collector-core.js) | Yasin (#2) | Kode bersama semua collector + Merkle proof + manifest batch |
-| [`integration/frontend/index.html`](integration/frontend/index.html) | Joseph (#5) | SOC Dashboard: login MetaMask, tabel status log, banner alarm real-time dari event `TamperingDetected` |
+| [`integration/frontend/`](integration/frontend/) | Joseph (#5) | SOC Dashboard **React + Vite**: registry log on-chain, alarm real-time, detail per log + verifikasi Merkle proof di browser, export CSV. Jalan tanpa MetaMask (mode hanya-baca) |
 | [`scripts/deploy.js`](scripts/deploy.js) | semua | Deploy tanpa Remix (buat node lokal) |
 
 > Mode `prove` di `merkleCollector.js` (buktikan baris ke-i identik dengan yang
