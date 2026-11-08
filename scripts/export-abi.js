@@ -11,6 +11,12 @@
 // Jalankan SETELAH `npm run compile` (atau `npm test` yang ikut meng-compile).
 // Tujuannya supaya ABI yang di-commit selalu sinkron dengan kontrak — dulu file
 // ini dibuat manual, gampang lupa diperbarui setelah kontrak diubah.
+//
+// CATATAN soal bytecode: beberapa byte terakhir hasil compile adalah metadata
+// (hash IPFS) yang ikut berubah kalau line ending file sumber atau build
+// compiler berbeda — jadi bytecode.txt bisa berbeda antara Windows (CRLF) dan
+// runner Linux (LF) walau kontrak & setelan compile-nya sama. Karena itu CI
+// hanya membandingkan ABI; bytecode.txt disimpan sebagai referensi build lokal.
 
 const fs = require("fs");
 const path = require("path");
