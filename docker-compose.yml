@@ -1,0 +1,149 @@
+# Stack gabungan Tamper-Proof SIEM: chain + deploy + server korban + collector + dashboard.
+#
+# Profil LOKAL (default, semua di dalam Docker):
+#   docker compose --profile local up -d --build
+#   → chain Hardhat 127.0.0.1:8545, kontrak auto-deploy, SSH korban 127.0.0.1:2222,
+#     dashboard http://127.0.0.1:8088
+#
+# Profil SEPOLIA (pakai kontrak yang sudah live, tanpa chain lokal):
+#   isi RPC_URL, CONTRACT_ADDRESS, PRIVATE_KEY di .env lalu
+#   docker compose up -d --build
+#
+# Service `chain` dan `deploy` hanya jalan di profil local.
+
+name: tamper-proof-siem
+
+x-app-env: &app-env
+  RPC_URL: ${RPC_URL:-http://chain:8545}
+  CONTRACT_ADDRESS: ${CONTRACT_ADDRESS:-}
+  PRIVATE_KEY: ${PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
+
+services:
+  # ---------------------------------------------------------------- chain lokal
+  chain:
+    profiles: ["local"]
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    image: siem-app:local
+    container_name: siem-chain
+    command: ["npx", "hardhat", "node", "--hostname", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:8545:8545"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:8545',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_chainId',params:[]})}).then(r=>r.json()).then(j=>process.exit(j.result?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  # deploy kontrak sekali, lalu simpan alamatnya di volume /state
+  deploy:
+    profiles: ["local"]
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    image: siem-app:local
+    container_name: siem-deploy
+    depends_on:
+      chain:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/repo/docker/deploy-entrypoint.sh"]
+    environment:
+      <<: *app-env
+      STATE_DIR: /state
+    volumes:
+      - siem-state:/state
+    restart: "no"
+
+  # ------------------------------------------------------- server korban (#3)
+  victim-server:
+    build: ./infra/victim-server
+    container_name: siem-victim
+    hostname: victim-server
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${VICTIM_SSH_PORT:-2222}:22"
+    environment:
+      LOG_FILE: /var/log/auth.log
+      BATCH_DIR: /siem-batches
+      BATCH_SIZE: ${BATCH_SIZE:-20}
+      FLUSH_INTERVAL_MS: ${FLUSH_INTERVAL_MS:-30000}
+    volumes:
+      - victim-logs:/var/log
+      - ./infra/siem-batches:/siem-batches
+    healthcheck:
+      test: ["CMD-SHELL", "supervisorctl status | grep -qvE 'FATAL|STOPPED'"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ------------------------------------------------- backend otomatis (#2)
+  collector:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    image: siem-app:local
+    container_name: siem-collector
+    entrypoint: ["/bin/sh", "/repo/docker/collector-entrypoint.sh"]
+    depends_on:
+      victim-server:
+        condition: service_healthy
+      # Sama seperti dashboard: tunggu alamat kontrak di /state sudah final
+      # (service `deploy` men-deploy ulang kalau chain-nya baru). Di profil
+      # Sepolia service `deploy` tidak aktif -> diabaikan.
+      deploy:
+        condition: service_completed_successfully
+        required: false
+    environment:
+      <<: *app-env
+      STATE_DIR: /state
+      BATCH_DIR: /data/batches
+      VICTIM_HOST: victim-server
+      SCAN_INTERVAL_MS: ${SCAN_INTERVAL_MS:-10000}
+      VERIFY_INTERVAL_MS: ${VERIFY_INTERVAL_MS:-30000}
+    volumes:
+      - siem-state:/state:ro
+      - ./infra/siem-batches:/data/batches
+    restart: unless-stopped
+
+  # ------------------------------------------------------ SOC Dashboard (#5)
+  dashboard:
+    build: ./integration/frontend
+    image: siem-dashboard:local
+    container_name: siem-dashboard
+    depends_on:
+      victim-server:
+        condition: service_healthy
+      # Tunggu service `deploy` selesai supaya /state/contract-address.txt sudah
+      # ada saat config.json ditulis. `required: false` -> di profil Sepolia
+      # (tanpa chain lokal) service `deploy` tidak aktif dan baris ini diabaikan.
+      deploy:
+        condition: service_completed_successfully
+        required: false
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-8088}:80"
+    environment:
+      # Browser memanggil RPC ini langsung, jadi alamatnya harus bisa diakses
+      # dari HOST — bukan nama service docker (`chain`). Untuk profil lokal
+      # chain dipublikasikan di 127.0.0.1:8545; untuk Sepolia isi
+      # BROWSER_RPC_URL sama dengan RPC_URL di .env.
+      RPC_URL: ${BROWSER_RPC_URL:-http://127.0.0.1:8545}
+      CONTRACT_ADDRESS: ${CONTRACT_ADDRESS:-}
+      CHAIN_ID: ${CHAIN_ID:-31337}
+      NETWORK_NAME: ${NETWORK_NAME:-Hardhat lokal}
+      POLL_SECONDS: ${POLL_SECONDS:-10}
+    volumes:
+      - siem-state:/state:ro
+      - ./infra/siem-batches:/data:ro
+    restart: unless-stopped
+
+volumes:
+  siem-state:
+  victim-logs:

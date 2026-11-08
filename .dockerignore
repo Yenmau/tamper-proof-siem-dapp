@@ -1,0 +1,14 @@
+# Build context root (dipakai docker/app.Dockerfile)
+node_modules
+**/node_modules
+artifacts
+cache
+typechain-types
+coverage
+.git
+integration/frontend/dist
+infra/siem-batches
+*.proofs.json
+.env
+.env.*
+!.env.example
