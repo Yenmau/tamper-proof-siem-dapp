@@ -1,95 +1,117 @@
-name: CI
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  test:
-    name: Hardhat test + cek skrip backend
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install dependensi
-        run: npm ci
-
-      - name: Test kontrak (15 test)
-        run: npm test
-
-      - name: Syntax check skrip backend
-        run: npm run lint:backend
-
-      - name: Test unit backend (tanpa jaringan/MongoDB)
-        run: npm run test:backend
-
-      # Penjaga regresi: `.env.example` pernah rusak karena di-append oleh
-      # PowerShell (`>>` menulis UTF-16LE) sehingga jadi file binary dan
-      # variabelnya tidak terbaca. Kalau kembali terjadi, CI gagal di sini.
-      - name: Cek encoding .env.example (harus teks UTF-8/ASCII)
-        run: |
-          ENC=$(file -b --mime-encoding integration/backend/.env.example)
-          echo "encoding terdeteksi: $ENC"
-          case "$ENC" in
-            utf-16*|binary|unknown-8bit)
-              echo "::error file=integration/backend/.env.example::Bukan UTF-8 (kemungkinan ter-append oleh PowerShell). Tulis ulang sebagai UTF-8."
-              exit 1
-              ;;
-          esac
-
-  dashboard:
-    name: Build dashboard (React + Vite)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: integration/frontend/package-lock.json
-
-      - name: Install dependensi dashboard
-        working-directory: integration/frontend
-        run: npm ci
-
-      - name: Build (vite build)
-        working-directory: integration/frontend
-        run: npm run build
-
-      - name: Cek config.json ikut ter-build
-        working-directory: integration/frontend
-        run: test -f dist/config.json && test -f dist/index.html && echo "dist ok"
-
-  stack:
-    name: Validasi stack docker compose
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Skrip shell harus LF + syntax valid
-        run: |
-          FAIL=0
-          for f in docker/*.sh integration/frontend/docker-entrypoint.d/*.sh; do
-            [ -e "$f" ] || continue
-            if grep -qU $'\r' "$f"; then
-              echo "::error file=$f::Ada CR (CRLF). Shebang #!/bin/sh gagal dibaca di dalam container — simpan sebagai LF."
-              FAIL=1
-            fi
-            sh -n "$f" || FAIL=1
-          done
-          exit $FAIL
-
-      - name: docker compose config valid (profil local & default)
-        run: |
-          cp .env.example .env
-          docker compose config -q
-          docker compose --profile local config -q
-          docker compose --profile local config --services
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Hardhat test + cek skrip backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependensi
+        run: npm ci
+
+      - name: "Test kontrak (22 test: RBAC + fungsi inti + CRUD aset + gas)"
+        run: npm test
+
+      - name: Syntax check skrip backend + API
+        run: npm run lint:backend
+
+      - name: Test unit backend + API off-chain (tanpa jaringan/MongoDB)
+        run: npm run test:backend
+
+      # ABI yang di-commit harus cocok dengan hasil compile kontrak. Dulu file ini
+      # dibuat manual -> gampang lupa diperbarui setelah kontrak diubah, dan
+      # backend/frontend jadi memakai ABI basi.
+      #
+      # CATATAN: yang dibandingkan hanya ABI. Bytecode tidak dicek di sini karena
+      # beberapa byte terakhirnya adalah metadata (hash IPFS) yang ikut berubah
+      # bila line ending file sumber atau build compiler berbeda (Windows CRLF vs
+      # runner Linux LF) - bytecode.txt disimpan sebagai referensi build lokal.
+      - name: ABI harus sinkron dengan kontrak
+        run: |
+          npm run export-abi
+          git diff --exit-code -- contracts/SIEMLogger.json || {
+            echo "::error::contracts/SIEMLogger.json tidak sinkron dengan kontrak. Jalankan: npm run compile && npm run export-abi"
+            exit 1
+          }
+
+      # Penjaga regresi: `.env.example` pernah rusak karena di-append oleh
+      # PowerShell (`>>` menulis UTF-16LE) sehingga jadi file binary dan
+      # variabelnya tidak terbaca. Kalau kembali terjadi, CI gagal di sini.
+      - name: Cek encoding .env.example (harus teks UTF-8/ASCII)
+        run: |
+          ENC=$(file -b --mime-encoding integration/backend/.env.example)
+          echo "encoding terdeteksi: $ENC"
+          case "$ENC" in
+            utf-16*|binary|unknown-8bit)
+              echo "::error file=integration/backend/.env.example::Bukan UTF-8 (kemungkinan ter-append oleh PowerShell). Tulis ulang sebagai UTF-8."
+              exit 1
+              ;;
+          esac
+
+  dashboard:
+    name: Build dashboard (React + Vite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: integration/frontend/package-lock.json
+
+      - name: Install dependensi dashboard
+        working-directory: integration/frontend
+        run: npm ci
+
+      - name: Build (vite build)
+        working-directory: integration/frontend
+        run: npm run build
+
+      - name: Cek config.json ikut ter-build
+        working-directory: integration/frontend
+        run: test -f dist/config.json && test -f dist/index.html && echo "dist ok"
+
+  stack:
+    name: Validasi stack docker compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skrip shell harus LF + syntax valid
+        run: |
+          FAIL=0
+          for f in docker/*.sh integration/frontend/docker-entrypoint.d/*.sh; do
+            [ -e "$f" ] || continue
+            if grep -qU $'\r' "$f"; then
+              echo "::error file=$f::Ada CR (CRLF). Shebang #!/bin/sh gagal dibaca di dalam container - simpan sebagai LF."
+              FAIL=1
+            fi
+            sh -n "$f" || FAIL=1
+          done
+          exit $FAIL
+
+      - name: docker compose config valid (profil local & default)
+        run: |
+          cp .env.example .env
+          docker compose config -q
+          docker compose --profile local config -q
+          echo "--- service profil local ---"
+          docker compose --profile local config --services
+          echo "--- cek service wajib ada ---"
+          for s in chain deploy victim-server collector dashboard mongo api; do
+            docker compose --profile local config --services | grep -qx "$s" || {
+              echo "::error::service '$s' hilang dari docker-compose.yml"; exit 1; }
+          done

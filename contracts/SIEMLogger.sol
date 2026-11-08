@@ -9,15 +9,27 @@ pragma solidity ^0.8.20;
  *         penyerang, hash server tidak akan cocok lagi dengan hash on-chain ->
  *         event `TamperingDetected` dipancarkan -> frontend menaikkan alarm.
  *
- * @dev    VERSI 3.0
+ * @dev    VERSI 4.0
  *
  *         == RBAC 3 ROLE (sesuai pembagian tugas tim) ==
- *         Role          Boleh tulis log   Boleh verifikasi(+alarm)   Boleh kelola role
- *         ---------------------------------------------------------------------------
- *         ADMIN              ya                   ya                     ya
- *         SOC_ANALYST        ya                   ya                     tidak
- *         AUDITOR            tidak                tidak (hanya view)     tidak
- *         (NONE / publik)    tidak                tidak (hanya view)     tidak
+ *         Role          Tulis log   Verifikasi(+alarm)   Aset: create/update   Aset: delete   Kelola role
+ *         -----------------------------------------------------------------------------------------------
+ *         ADMIN            ya              ya                    ya                ya            ya
+ *         SOC_ANALYST      ya              ya                    ya                tidak         tidak
+ *         AUDITOR          tidak      tidak (hanya view)        tidak              tidak         tidak
+ *         (NONE / publik)  tidak      tidak (hanya view)        tidak              tidak         tidak
+ *
+ *         == DUA JENIS DATA ON-CHAIN ==
+ *         1. LogEntry (registry log, v1.0-v3.0) — SEKALI TULIS, sengaja TIDAK bisa
+ *            di-update/delete: kalau hash bisa ditimpa, penyerang yang berhasil
+ *            masuk ke akun admin bisa menghapus jejaknya. Immutability = inti
+ *            nilai keamanan proyek ini.
+ *         2. Asset (registry aset/insiden, v4.0) — CRUD PENUH (create, view,
+ *            update, delete) karena aset/inventaris memang berubah (pindah
+ *            lokasi, ganti kategori, dinonaktifkan). RBAC tetap berlaku:
+ *            create/update = ADMIN + SOC_ANALYST, delete = ADMIN saja.
+ *            Penghapusan tetap meninggalkan jejak permanen lewat event
+ *            `AssetDeleted` di blockchain.
  *
  *         Alasan desain: AUDITOR sengaja dibuat READ-ONLY. Prinsip pemisahan
  *         tugas (separation of duties) — auditor tidak boleh punya kemampuan
@@ -34,7 +46,7 @@ pragma solidity ^0.8.20;
  */
 contract SIEMLogger {
     /// @notice Versi kontrak, bisa ditampilkan di UI.
-    string public constant VERSION = "3.0.0";
+    string public constant VERSION = "4.0.0";
 
     // ---------------------------------------------------------------------
     // RBAC — Role-Based Access Control
@@ -59,6 +71,19 @@ contract SIEMLogger {
         address recordedBy;  // akun yang mendaftarkan entri ini
     }
 
+    /// @dev Registry aset/insiden (v4.0). Berbeda dari LogEntry: entri ini
+    ///      BOLEH di-update dan di-delete (lihat catatan di header).
+    struct Asset {
+        string  name;       // nama aset (wajib, tidak boleh kosong)
+        string  category;   // kategori bebas (mis. "server", "database", "endpoint")
+        string  location;   // lokasi/hostname
+        uint64  createdAt;  // + updatedAt + exists dipack: 8+8+1 = 17 byte = 1 slot
+        uint64  updatedAt;
+        bool    exists;
+        address createdBy;
+        address updatedBy;
+    }
+
     // ---------------------------------------------------------------------
     // Storage
     // ---------------------------------------------------------------------
@@ -75,8 +100,16 @@ contract SIEMLogger {
     /// @notice Registry log: logId => LogEntry.
     mapping(string => LogEntry) public logs;
 
+    /// @dev Registry aset: assetId => Asset (v4.0). Private — dibaca lewat
+    ///      `getAsset` / `assetExists` supaya ABI-nya tetap rapi.
+    mapping(string => Asset) private _assets;
+
     address[] private _adminList;
     string[]  private _logIds;
+    string[]  private _assetIds;
+    /// @dev 1-based; 0 = tidak ada. Dipakai supaya penghapusan O(1) (swap-pop),
+    ///      bukan mencari di dalam array string.
+    mapping(string => uint256) private _assetIndex;
 
     // ---------------------------------------------------------------------
     // Events
@@ -96,6 +129,15 @@ contract SIEMLogger {
     ///         Ini event yang didengarkan frontend untuk menaikkan alarm.
     ///         `logId` sengaja tidak di-index agar bisa ditampilkan langsung.
     event TamperingDetected(string logId, string expectedHash, string actualHash);
+
+    /// @notice Registry aset (v4.0) — CRUD penuh, tapi jejaknya permanen.
+    /// @dev    `assetId` sengaja TIDAK di-index (sama seperti `logId`) supaya
+    ///         isinya bisa dibaca langsung dari payload event di dashboard.
+    event AssetCreated(string assetId, string name, string category, address by, uint256 timestamp);
+    event AssetUpdated(string assetId, string name, string category, address by, uint256 timestamp);
+    /// @notice Data aset dihapus dari state, tapi kejadian penghapusannya
+    ///         tercatat permanen di sini — inilah bedanya dengan database biasa.
+    event AssetDeleted(string assetId, address by, uint256 timestamp);
 
     /// @notice Perubahan role (v3.0 — menggantikan AdminAdded/AdminRemoved).
     event RoleAssigned(address indexed account, Role role);
@@ -120,6 +162,10 @@ contract SIEMLogger {
     error LogNotFound(string logId);
     error EmptyHash();
     error LengthMismatch();
+    error EmptyId();
+    error EmptyName();
+    error AssetAlreadyExists(string assetId);
+    error AssetNotFound(string assetId);
 
     // ---------------------------------------------------------------------
     // Modifier
@@ -398,6 +444,124 @@ contract SIEMLogger {
 
     function getLogIdAt(uint256 _index) external view returns (string memory) {
         return _logIds[_index];
+    }
+
+    // ---------------------------------------------------------------------
+    // REGISTRY ASET (v4.0) — CRUD on-chain penuh
+    // ---------------------------------------------------------------------
+
+    /// @notice CREATE — daftarkan aset baru. ADMIN atau SOC_ANALYST.
+    function createAsset(
+        string calldata _assetId,
+        string calldata _name,
+        string calldata _category,
+        string calldata _location
+    ) external onlyOperator {
+        if (bytes(_assetId).length == 0) revert EmptyId();
+        if (bytes(_name).length == 0) revert EmptyName();
+        if (_assets[_assetId].exists) revert AssetAlreadyExists(_assetId);
+
+        _assets[_assetId] = Asset({
+            name: _name,
+            category: _category,
+            location: _location,
+            createdAt: uint64(block.timestamp),
+            updatedAt: uint64(block.timestamp),
+            exists: true,
+            createdBy: msg.sender,
+            updatedBy: msg.sender
+        });
+
+        _assetIds.push(_assetId);
+        _assetIndex[_assetId] = _assetIds.length; // 1-based
+
+        emit AssetCreated(_assetId, _name, _category, msg.sender, block.timestamp);
+    }
+
+    /// @notice UPDATE — ubah nama/kategori/lokasi aset. ADMIN atau SOC_ANALYST.
+    function updateAsset(
+        string calldata _assetId,
+        string calldata _name,
+        string calldata _category,
+        string calldata _location
+    ) external onlyOperator {
+        Asset storage a = _assets[_assetId];
+        if (!a.exists) revert AssetNotFound(_assetId);
+        if (bytes(_name).length == 0) revert EmptyName();
+
+        a.name = _name;
+        a.category = _category;
+        a.location = _location;
+        a.updatedAt = uint64(block.timestamp);
+        a.updatedBy = msg.sender;
+
+        emit AssetUpdated(_assetId, _name, _category, msg.sender, block.timestamp);
+    }
+
+    /// @notice DELETE — hapus aset dari state. Hanya ADMIN.
+    /// @dev    Dihapus betulan (`delete`), bukan sekadar ditandai — tapi event
+    ///         `AssetDeleted` tetap tersimpan permanen di blockchain.
+    function deleteAsset(string calldata _assetId) external onlyAdmin {
+        if (!_assets[_assetId].exists) revert AssetNotFound(_assetId);
+
+        delete _assets[_assetId];
+
+        uint256 idx = _assetIndex[_assetId]; // 1-based
+        uint256 len = _assetIds.length;
+        if (idx != 0 && idx <= len) {
+            _assetIds[idx - 1] = _assetIds[len - 1];
+            _assetIndex[_assetIds[idx - 1]] = idx; // perbaiki index yang dipindah
+            _assetIds.pop();
+        }
+        delete _assetIndex[_assetId];
+
+        emit AssetDeleted(_assetId, msg.sender, block.timestamp);
+    }
+
+    // ---------------------------------------------------------------------
+    // Query aset (view, gratis)
+    // ---------------------------------------------------------------------
+
+    /// @notice VIEW — ambil satu aset. Revert `AssetNotFound` kalau tidak ada.
+    function getAsset(string calldata _assetId)
+        external
+        view
+        returns (
+            string memory name,
+            string memory category,
+            string memory location,
+            uint64 createdAt,
+            uint64 updatedAt,
+            address createdBy,
+            address updatedBy
+        )
+    {
+        Asset storage a = _assets[_assetId];
+        if (!a.exists) revert AssetNotFound(_assetId);
+        return (a.name, a.category, a.location, a.createdAt, a.updatedAt, a.createdBy, a.updatedBy);
+    }
+
+    /// @notice true kalau aset terdaftar (dipakai UI sebelum menampilkan detail).
+    function assetExists(string calldata _assetId) external view returns (bool) {
+        return _assets[_assetId].exists;
+    }
+
+    function getAssetCount() external view returns (uint256) {
+        return _assetIds.length;
+    }
+
+    function getAssetIds() external view returns (string[] memory) {
+        return _assetIds;
+    }
+
+    function getAssetIdAt(uint256 _index) external view returns (string memory) {
+        return _assetIds[_index];
+    }
+
+    /// @notice Helper untuk UI: apakah akun ini boleh menambah/mengubah aset?
+    function canManageAssets(address _account) external view returns (bool) {
+        Role r = roles[_account];
+        return r == Role.SOC_ANALYST || r == Role.ADMIN;
     }
 
     // ---------------------------------------------------------------------

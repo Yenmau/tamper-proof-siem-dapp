@@ -14,6 +14,7 @@ set -e
 : "${CHAIN_ID:=31337}"
 : "${NETWORK_NAME:=Hardhat lokal}"
 : "${POLL_SECONDS:=10}"
+: "${API_BASE_URL:=}"
 
 if [ -z "${CONTRACT_ADDRESS}" ] && [ -s /state/contract-address.txt ]; then
   CONTRACT_ADDRESS=$(tr -d '\r\n' < /state/contract-address.txt)
@@ -27,8 +28,9 @@ cat > /usr/share/nginx/html/config.json <<EOF
   "chainId": ${CHAIN_ID},
   "networkName": "${NETWORK_NAME}",
   "pollSeconds": ${POLL_SECONDS},
+  "apiBase": "${API_BASE_URL}",
   "dataPath": "/data"
 }
 EOF
 
-echo "[siem-dashboard] config.json -> RPC ${RPC_URL}, kontrak ${CONTRACT_ADDRESS:-'(kosong)'}, chain ${CHAIN_ID}"
+echo "[siem-dashboard] config.json -> RPC ${RPC_URL}, kontrak ${CONTRACT_ADDRESS:-'(kosong)'}, chain ${CHAIN_ID}, API ${API_BASE_URL:-'(kosong)'}"
