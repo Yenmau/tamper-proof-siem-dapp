@@ -9,9 +9,12 @@ integration/
 ├── backend/
 │   ├── logCollector.js      ← SKRIP 1: SHA-256 file utuh (tanpa DB)
 │   ├── merkleCollector.js   ← SKRIP 2: Merkle Tree + bukti per baris (README_MERKLE.md)
-│   ├── lib/collector-core.js← kode bersama kedua skrip (hash, proof, manifest, batch)
+│   ├── collectorService.js  ← DAEMON: batch baru -> record + verify otomatis
+│   ├── lib/collector-core.js← kode bersama semua skrip (hash, proof, manifest, batch)
+│   ├── lib/batch-queue.js   ← logika antrean collectorService (murni, ada unit test)
 │   ├── README_MERKLE.md     ← penjelasan jalur Merkle + Merkle proof per baris
 │   ├── test/core.test.js    ← 28 unit test tanpa jaringan (npm run test:backend)
+│   ├── test/batch-queue.test.js ← 12 unit test antrean (npm run test:backend)
 │   ├── .env.example         ← template konfigurasi (salin jadi .env)
 │   └── sample/auth.log      ← contoh file log untuk uji coba
 └── frontend/
@@ -107,6 +110,39 @@ kedua skrip) ada di `dependencies`, jadi tetap terpasang walau server memakai
 masih identik dengan yang direkam, hanya-baca) — lihat
 [`backend/README_MERKLE.md`](backend/README_MERKLE.md).
 
+### Collector service — jalankan otomatis (tanpa perintah manual per file)
+
+Kalau log dihasilkan terus-menerus (mis. server korban #3 yang memotong log jadi
+batch), jalankan daemon ini sekali dan biarkan dia bekerja:
+
+```bash
+# dari root repo; BATCH_DIR = folder batch hasil log-shipper
+export RPC_URL=http://127.0.0.1:8545
+export CONTRACT_ADDRESS=<alamat kontrak>
+export PRIVATE_KEY=<private key akun SOC_ANALYST>
+export BATCH_DIR=./infra/siem-batches        # folder yang ditulis log-shipper
+npm run collector                            # daemon
+node integration/backend/collectorService.js --once   # satu putaran (untuk uji/CI)
+```
+
+Yang dikerjakan tiap putaran:
+
+1. Membaca `index.ndjson` (fallback: memindai `*.log` di `BATCH_DIR`).
+2. Batch yang **belum** terdaftar -> dihitung Merkle Root + bukti per baris, lalu
+   direkam on-chain. Beberapa batch sekaligus dikirim dalam **satu** transaksi
+   (`recordLogHashBatch`): terukur 218.226 vs 253.838 gas/batch.
+3. Batch yang sudah terdaftar -> dicek ulang lewat `verifyLogIntegrityView`
+   (**gratis**). Kalau hash server berbeda atau file hilang, baru dikirim
+   transaksi `verifyLogIntegrity` -> event `TamperingDetected` (alarm dashboard).
+4. State disimpan di `<BATCH_DIR>/.collector-state.json` (atomik: tulis `.tmp`
+   lalu `rename`), jadi restart tidak merekam ulang dan batch yang sudah
+   `tampered` tidak dibuang-buang gas untuk dicek lagi.
+
+Env tambahan: `STATE_PATH`, `SCAN_INTERVAL_MS` (default 10000),
+`VERIFY_INTERVAL_MS` (default 30000), `VICTIM_HOST` (awalan `logId` untuk file
+yang tidak ada di index). Diuji end-to-end: batch dari server korban -> direkam
+otomatis -> batch diubah/dihapus -> alarm `TamperingDetected` tercatat on-chain.
+
 Contoh `logId` yang rapi (biar bisa di-*rotate* harian):
 `auth.log#2026-10-09`, `syslog#2026-10-09`.
 
@@ -187,7 +223,9 @@ dan punya unit test tanpa jaringan: `npm run test:backend`.
       Tidak butuh MongoDB dan tidak butuh private key (hanya-baca).
 - [x] kirim banyak log sekaligus lewat `recordLogHashBatch(ids, hashes)` — mode
       `batch <manifest.txt>` di kedua skrip (hemat ±17% gas per log)
-- [ ] jalankan skrip ini sebagai *service* (systemd / Docker) — bagian DevOps #3
+- [x] jalankan sebagai *service*: `collectorService.js` (daemon: rekam batch baru
+      + verifikasi berkala, state disimpan di file JSON). Pembungkusan Docker/systemd
+      tetap milik DevOps #3.
 
 ---
 
