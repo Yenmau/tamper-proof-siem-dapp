@@ -17,3 +17,8 @@ coverage.json
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# infra (DevOps): file batch hasil shipper jangan ikut commit
+infra/siem-batches/*
+!infra/siem-batches/.gitkeep
+infra/.env
