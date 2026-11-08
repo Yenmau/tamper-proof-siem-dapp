@@ -1,0 +1,8 @@
+# Jangan ikut ke build context: node_modules dari Windows akan menimpa
+# node_modules hasil `npm ci` di dalam image (binernya beda OS) dan bikin
+# `npm run build` gagal dengan "node.exe: not found".
+node_modules
+dist
+.env
+.env.*
+npm-debug.log*

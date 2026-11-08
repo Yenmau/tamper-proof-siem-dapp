@@ -13,6 +13,9 @@ coverage.json
 .env.*
 !.env.example
 
+# frontend build output (React + Vite)
+integration/frontend/dist/
+
 # artefak runtime collector (di-generate saat `record`/`batch`)
 *.proofs.json
 

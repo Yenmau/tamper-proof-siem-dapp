@@ -17,8 +17,11 @@ integration/
 │   ├── test/batch-queue.test.js ← 12 unit test antrean (npm run test:backend)
 │   ├── .env.example         ← template konfigurasi (salin jadi .env)
 │   └── sample/auth.log      ← contoh file log untuk uji coba
-└── frontend/
-    └── index.html           ← SOC Dashboard (single file, Tailwind + ethers dari CDN)
+└── frontend/                ← SOC Dashboard (React + Vite) — jobdesk #5
+    ├── src/                 ← App.jsx, lib/, components/
+    ├── public/config.json   ← default untuk dev
+    ├── Dockerfile + nginx.conf ← serve SPA + /data (batch & artefak bukti)
+    └── legacy-dashboard.html ← dashboard versi satu-file (referensi)
 ```
 
 ---
@@ -229,54 +232,52 @@ dan punya unit test tanpa jaringan: `npm run test:backend`.
 
 ---
 
-## 👤 Untuk Joseph (SOC Dashboard)
+## 👤 Untuk Joseph (SOC Dashboard — React)
 
-### Setup
+Versi satu-file (`frontend/legacy-dashboard.html`, butuh MetaMask) sudah digantikan
+aplikasi **React + Vite + Tailwind** di [`integration/frontend/`](frontend/).
+Detail lengkap ada di [`frontend/README.md`](frontend/README.md).
 
-1. Buka [`integration/frontend/index.html`](frontend/index.html).
-2. Isi `CONFIG.contractAddress` di bagian atas `<script>` dengan alamat hasil
-   deploy. `CONFIG.expectedChainId` disesuaikan:
-   `31337` = Hardhat lokal, `11155111` = Sepolia, `80002` = Amoy.
-3. Sajikan lewat HTTP (MetaMask tidak jalan di `file://`):
-   `python -m http.server 8788` dari root repo.
+### Menjalankan
 
-ABI-nya **ditempel langsung di dalam `index.html`** (7 entri yang dipakai
-dashboard), jadi tidak ada lagi `fetch` ke `contracts/SIEMLogger.json`.
-Nilai default `CONFIG` sudah menunjuk ke kontrak **Sepolia yang live**
-(`0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd`, chainId `11155111`); ganti ke
-`0x5FbDB2315678afecb367f032d93F642f64180aa3` + chainId `31337` kalau mau
-menguji di node Hardhat lokal.
+```bash
+# cara cepat (bagian dari stack gabungan, dari root repo)
+docker compose up -d dashboard        # http://127.0.0.1:8088
+
+# mode pengembangan
+cd integration/frontend
+NODE_ENV=development npm install
+npm run dev                           # http://127.0.0.1:5173
+```
+
+Tidak wajib MetaMask: dashboard memakai provider RPC **hanya-baca**, jadi tabel
+registry dan alarm tetap jalan tanpa wallet. Tombol *connect wallet* opsional
+(hanya untuk badge role).
+
+Konfigurasi dibaca dari `config.json` yang ditulis saat container start
+(`RPC_URL`, `CONTRACT_ADDRESS`, `CHAIN_ID`, `NETWORK_NAME`). Kalau alamat kontrak
+kosong, dashboard menampilkan input untuk menempel alamat (disimpan di
+localStorage) — berguna untuk uji lokal.
 
 ### Fitur yang sudah jalan
 
-- **Login via Wallet** — tombol *Connect Wallet* → `eth_requestAccounts`.
-- **Badge role** — menampilkan role akun yang connect (`ADMIN` / `SOC_ANALYST` / `AUDITOR`).
-- **Tabel registry log** — dari `getLogCount()` + `getLogIdAt(i)` + `getLogEntry(logId)`.
-- **Badge status** 🟢 AMAN / 🔴 TAMPERED — dari field `isTampered`.
-- **🚨 Alarm real-time** — mendengarkan event `TamperingDetected`, memunculkan
-  banner merah + judul tab berkedip + masuk ke *Event Stream*.
+- **Registry log on-chain** — `getLogCount` + `getLogIdAt` + `getLogEntry`:
+  logId, Merkle Root, waktu rekam, verifikasi terakhir, perekam, status.
+- **🚨 Alarm real-time** — event `TamperingDetected` → banner merah + judul tab
+  berkedip + baris di *Event Stream* (`LogRecorded` / `LogVerified` juga dicatat).
+- **Detail per log + panel bukti Merkle per baris (dihitung DI BROWSER)** —
+  dashboard mengambil file batch + `…proofs.json`, lalu memverifikasi
+  proof-nya dengan WebCrypto terhadap Merkle Root **on-chain**; tersedia juga cek
+  ulang gratis lewat `verifyLogIntegrityView`. Jadi klaim integritas tidak
+  bergantung pada backend.
+- **Filter + export CSV** dari registry, dan auto-refresh tiap `pollSeconds`.
 
-### Potongan kode inti (yang paling penting)
+### Yang masih bisa dikembangkan
 
-```javascript
-const provider = new ethers.BrowserProvider(window.ethereum);
-await provider.send("eth_requestAccounts", []);
-const signer = await provider.getSigner();
-const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
-
-// ⚠️ INI yang bikin alarmnya real-time
-contract.on("TamperingDetected", (logId, expectedHash, actualHash) => {
-  tampilkanAlarm(logId, expectedHash, actualHash);
-});
-```
-
-### Yang masih perlu Joseph kembangkan
-
-- [ ] ganti Tailwind CDN → Tailwind CLI/build (biar bisa dikustom)
-- [ ] pindahkan ke React kalau dosen mensyaratkan (struktur komponennya sudah
-      jelas dari `index.html`: Header, StatCard, LogTable, AlarmBanner, EventStream)
-- [ ] halaman detail per log (riwayat `LogVerified`, waktu verifikasi terakhir)
-- [ ] grafik/riwayat alarm, filter, dan export laporan
+- [ ] grafik riwayat alarm (harian/mingguan) dan halaman "insiden"
+- [ ] autentikasi/role-based UI (sekarang semua data on-chain memang publik)
+- [ ] code-splitting: bundle 634 kB (mayoritas `ethers`) masih satu chunk
+- [ ] unit test komponen (mis. Vitest + Testing Library)
 
 ---
 

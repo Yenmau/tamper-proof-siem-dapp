@@ -60,6 +60,11 @@ Mode di luar `record`/`watch` (sudah ada di `main`):
   dari log-shipper (#3) dan mengecek integritasnya berkala; inilah yang dipakai
   stack `docker compose` gabungan, jadi tidak perlu jalan manual per file.
 
+Dashboard SOC (#5) sekarang aplikasi **React + Vite** di `integration/frontend/`
+(bukan lagi satu file HTML) dan jalan sebagai container nginx di stack gabungan;
+ia juga bisa memverifikasi Merkle proof per baris di browser, jadi auditor (#6)
+tidak perlu menjalankan CLI untuk melihat bukti.
+
 **Bisa mulai SEKARANG tanpa role.** Uji di node lokal (`npx hardhat node`) — di situ akunmu
 otomatis admin, jadi `recordLogHash` / `verifyLogIntegrity` bisa langsung dicoba. Role
 SOC_ANALYST baru diperlukan saat transaksi ke kontrak **Sepolia** milik Vincent.

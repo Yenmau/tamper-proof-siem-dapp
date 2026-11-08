@@ -11,6 +11,24 @@ Semua perubahan penting pada smart contract. Format mengikuti
 `contracts/SIEMLogger.sol` **tidak disentuh**; ABI, bytecode, dan alamat Sepolia
 tetap sama. Bagian ini mencatat perubahan di sekitarnya supaya jejaknya jelas.
 
+### Added — SOC Dashboard React + Vite (jobdesk #5)
+
+- `integration/frontend/` diganti dari dashboard satu-file menjadi aplikasi
+  **React 18 + Vite + Tailwind**: `src/App.jsx`, `src/lib/{config,contract,merkle,format}.js`,
+  `src/components/{Header,StatCards,LogTable,LogDetail,ProofPanel,AlarmBanner,EventStream}.jsx`.
+  Versi lama tetap disimpan sebagai `frontend/legacy-dashboard.html`.
+- **Jalan tanpa MetaMask**: provider RPC hanya-baca untuk registry + event;
+  tombol connect wallet opsional (badge role).
+- **Verifikasi Merkle proof di browser** (WebCrypto SHA-256, tanpa backend): panel
+  per log memeriksa tiap baris terhadap Merkle Root on-chain, plus cek ulang gratis
+  `verifyLogIntegrityView` atas root yang dihitung di browser. Algoritma
+  diuji silang dengan `merkletreejs` (hasil identik).
+- Filter + export CSV, statistik (total/aman/tampered/alarm), event stream
+  (`TamperingDetected`, `LogRecorded`, `LogVerified`), judul tab berkedip.
+- `Dockerfile` (build → nginx) + `nginx.conf` yang menyajikan `/data` (folder batch
+  + artefak bukti, read-only) + `docker-entrypoint.d/40-siem-config.sh` yang menulis
+  `config.json` dari env sehingga satu image dipakai untuk chain lokal maupun Sepolia.
+
 ### Added — `collectorService.js` (batch log → on-chain, otomatis)
 
 - **Daemon baru** `integration/backend/collectorService.js`: membaca `index.ndjson`
