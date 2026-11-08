@@ -4,5 +4,6 @@
   "chainId": 31337,
   "networkName": "Hardhat lokal",
   "pollSeconds": 10,
-  "dataPath": "/data"
+  "dataPath": "/data",
+  "apiBase": "http://127.0.0.1:8089"
 }

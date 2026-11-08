@@ -9,6 +9,40 @@ Dokumen ini dipakai Vincent (Smart Contract / Web3 Lead) untuk men-deploy
 
 ---
 
+## ⚡ v4.0 — deploy ulang wajib (dan role harus didaftarkan ULANG)
+
+Kontrak di Sepolia sekarang masih **v3.0** (`0x1E6b…0BbBd`). Versi **v4.0**
+menambahkan registry aset (`createAsset` / `updateAsset` / `deleteAsset`), jadi
+kontrak itu **harus di-deploy ulang** — fungsi baru tidak bisa muncul di kontrak
+yang sudah terlanjur live (bytecode tidak bisa ditambal).
+
+Langkahnya sama seperti deploy biasa (bagian 3-5 di bawah), dengan dua catatan:
+
+1. Compile tetap **Solidity 0.8.26 + optimizer 200 + EVM paris** — sama seperti Remix
+   selama ini, supaya ABI/bytecode tetap identik dengan hasil `npm test`.
+2. **Role tidak ikut pindah.** Setelah deploy baru, kontrak yang baru hanya mengenal
+   deployer sebagai `ADMIN`. Jalankan lagi (bagian 7):
+
+| Akun | Fungsi yang dipanggil |
+|---|---|
+| Vincent (deployer) | otomatis `ADMIN` |
+| Yasin `0x78ab74A8d8AA1490ECB3F806fE1e25f40DcF88a0` | `addAnalyst(...)` |
+| Nat (alamat menyusul) | `addAuditor(...)` |
+
+Lalu perbarui:
+- [`deployments.json`](deployments.json) → alamat + tx hash + tanggal baru;
+- `.env` server (kalau collector/API dijalankan terpisah);
+- `HANDOVER.md` → alamat kontrak + status role.
+
+Verifikasi cepat dari Remix setelah deploy ulang:
+`VERSION()` → `4.0.0` · `getRoleName(0x78ab…)` → `SOC_ANALYST` ·
+`getAssetCount()` → `0`.
+
+Sementara belum di-deploy ke Sepolia, semua fitur v4.0 bisa dicoba lokal:
+`docker compose --profile local up -d --build` (lihat README bagian 🐳).
+
+---
+
 ## 0. Yang harus disiapkan dulu
 
 | Kebutuhan | Keterangan |

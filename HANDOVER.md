@@ -1,7 +1,13 @@
 # 🤝 HANDOVER — dari #1 (Smart Contract) ke Tim
 
 Dokumen serah terima. Ditulis oleh **Vincent (#1 — Smart Contract Developer / Web3 Lead)**.
-Terakhir diperbarui: 2026-10-22 (sesi 3 — perapian backend + CI).
+Terakhir diperbarui: 2026-11-08 (kontrak v4.0 — registry aset, API off-chain, login wallet).
+
+> **Penting untuk v4.0:** kontrak di Sepolia masih v3.0. Setelah v4.0 di-deploy
+> ulang, **semua role harus didaftarkan ulang** di alamat kontrak yang baru
+> (`addAnalyst` untuk Yasin, `addAuditor` untuk Nat) dan `deployments.json`
+> diperbarui. Langkahnya ada di [`DEPLOY.md`](DEPLOY.md) bagian "v4.0 — deploy
+> ulang wajib".
 
 Tujuannya: supaya **Yasin (#2 backend)** dan **Joseph (#5 frontend)** langsung paham
 apa yang sudah jadi, apa yang mereka terima, dan dari mana mereka mulai.

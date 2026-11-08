@@ -27,8 +27,19 @@ jobs:
       - name: Syntax check skrip backend
         run: npm run lint:backend
 
-      - name: Test unit backend (tanpa jaringan/MongoDB)
+      - name: Test unit backend + API off-chain (tanpa jaringan/MongoDB)
         run: npm run test:backend
+
+      # ABI & bytecode yang di-commit harus cocok dengan hasil compile kontrak.
+      # Dulu file ini dibuat manual -> gampang lupa diperbarui setelah kontrak
+      # diubah, dan backend/frontend jadi memakai ABI basi.
+      - name: ABI & bytecode harus sinkron dengan kontrak
+        run: |
+          npm run export-abi
+          git diff --exit-code -- contracts/ || {
+            echo "::error::contracts/SIEMLogger.json atau .bytecode.txt tidak sinkron. Jalankan: npm run compile && npm run export-abi"
+            exit 1
+          }
 
       # Penjaga regresi: `.env.example` pernah rusak karena di-append oleh
       # PowerShell (`>>` menulis UTF-16LE) sehingga jadi file binary dan
@@ -92,4 +103,10 @@ jobs:
           cp .env.example .env
           docker compose config -q
           docker compose --profile local config -q
+          echo "--- service profil local ---"
           docker compose --profile local config --services
+          echo "--- cek service wajib ada ---"
+          for s in chain deploy victim-server collector dashboard mongo api; do
+            docker compose --profile local config --services | grep -qx "$s" || {
+              echo "::error::service '$s' hilang dari docker-compose.yml"; exit 1; }
+          done

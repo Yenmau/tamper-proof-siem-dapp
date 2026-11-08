@@ -1,25 +1,29 @@
-{
-  "name": "tamper-proof-siem-dapp",
-  "version": "3.0.0",
-  "private": true,
-  "description": "Tamper-Proof SIEM dApp — SIEMLogger smart contract + kit integrasi backend/frontend",
-  "scripts": {
-    "compile": "hardhat compile",
-    "test": "hardhat test",
-    "test:backend": "node integration/backend/test/core.test.js && node integration/backend/test/batch-queue.test.js",
-    "lint:backend": "node --check integration/backend/lib/collector-core.js && node --check integration/backend/lib/batch-queue.js && node --check integration/backend/logCollector.js && node --check integration/backend/merkleCollector.js && node --check integration/backend/collectorService.js && node --check integration/backend/test/core.test.js && node --check integration/backend/test/batch-queue.test.js",
-    "collector": "node integration/backend/collectorService.js"
-  },
-  "devDependencies": {
-    "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",
-    "@nomicfoundation/hardhat-ethers": "^3.0.8",
-    "chai": "^4.5.0",
-    "hardhat": "^2.22.19"
-  },
-  "dependencies": {
-    "dotenv": "^18.0.7",
-    "ethers": "^6.13.4",
-    "merkletreejs": "^0.6.0",
-    "mongoose": "^9.11.1"
-  }
-}
+{
+  "name": "tamper-proof-siem-dapp",
+  "version": "4.0.0",
+  "private": true,
+  "description": "Tamper-Proof SIEM dApp \u2014 SIEMLogger v4.0 (registry log + registry aset + RBAC) + backend on-chain/off-chain + SOC Dashboard",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "test:backend": "node integration/backend/test/core.test.js && node integration/backend/test/batch-queue.test.js && node integration/backend/test/api.test.js",
+    "lint:backend": "node --check integration/backend/lib/collector-core.js && node --check integration/backend/lib/batch-queue.js && node --check integration/backend/logCollector.js && node --check integration/backend/merkleCollector.js && node --check integration/backend/collectorService.js && node --check integration/backend/api/server.js && node --check integration/backend/api/lib/auth.js && node --check integration/backend/api/lib/users.js && node --check integration/backend/test/core.test.js && node --check integration/backend/test/batch-queue.test.js && node --check integration/backend/test/api.test.js",
+    "collector": "node integration/backend/collectorService.js",
+    "export-abi": "node scripts/export-abi.js",
+    "api": "node integration/backend/api/server.js",
+    "test:api": "node integration/backend/test/api.test.js"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",
+    "@nomicfoundation/hardhat-ethers": "^3.0.8",
+    "chai": "^4.5.0",
+    "hardhat": "^2.22.19"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.7",
+    "ethers": "^6.13.4",
+    "express": "^4.21.2",
+    "merkletreejs": "^0.6.0",
+    "mongoose": "^9.11.1"
+  }
+}

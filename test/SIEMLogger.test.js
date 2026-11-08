@@ -21,12 +21,12 @@ async function deploy() {
   return { c, owner, analyst, auditor, outsider };
 }
 
-describe("SIEMLogger v3.0", function () {
+describe("SIEMLogger v4.0", function () {
   // -------------------------------------------------------------------
   describe("A. Dasar & RBAC", function () {
-    it("1. deploy: owner jadi ADMIN pertama, VERSION 3.0.0", async function () {
+    it("1. deploy: owner jadi ADMIN pertama, VERSION 4.0.0", async function () {
       const { c, owner } = await deploy();
-      expect(await c.VERSION()).to.equal("3.0.0");
+      expect(await c.VERSION()).to.equal("4.0.0");
       expect(await c.admin()).to.equal(owner.address);
       expect(await c.roles(owner.address)).to.equal(ADMIN);
       expect(await c.isAdmin(owner.address)).to.equal(true);
@@ -311,6 +311,174 @@ describe("SIEMLogger v3.0", function () {
       console.log("        rata-rata batch     =", (g5 / 5n).toString(), "gas/log");
 
       expect(g5 / 5n).to.be.lessThan(g1);
+    });
+  });
+
+  // -------------------------------------------------------------------
+  describe("C. Registry aset — CRUD on-chain (v4.0)", function () {
+    it("16. createAsset: ADMIN & SOC_ANALYST boleh, data tersimpan + event", async function () {
+      const { c, owner, analyst } = await deploy();
+      await c.addAnalyst(analyst.address);
+
+      await expect(c.createAsset("srv-01", "Web Server 01", "server", "rack A / ruang server"))
+        .to.emit(c, "AssetCreated")
+        .withArgs("srv-01", "Web Server 01", "server", owner.address, anyUint);
+
+      // analyst juga boleh menambah
+      await c.connect(analyst).createAsset("db-01", "Database Utama", "database", "rack B");
+      expect(await c.getAssetCount()).to.equal(2n);
+      expect(await c.getAssetIds()).to.deep.equal(["srv-01", "db-01"]);
+      expect(await c.getAssetIdAt(1)).to.equal("db-01");
+      expect(await c.assetExists("srv-01")).to.equal(true);
+      expect(await c.assetExists("tidak-ada")).to.equal(false);
+
+      const a = await c.getAsset("srv-01");
+      expect(a[0]).to.equal("Web Server 01");
+      expect(a[1]).to.equal("server");
+      expect(a[2]).to.equal("rack A / ruang server");
+      expect(a[3]).to.be.greaterThan(0n);          // createdAt
+      expect(a[4]).to.equal(a[3]);                 // updatedAt == createdAt saat baru
+      expect(a[5]).to.equal(owner.address);        // createdBy
+      expect(a[6]).to.equal(owner.address);        // updatedBy
+    });
+
+    it("17. createAsset: RBAC & validasi (outsider/auditor ditolak, id/nama kosong, duplikat)", async function () {
+      const { c, analyst, auditor, outsider } = await deploy();
+      await c.addAnalyst(analyst.address);
+      await c.addAuditor(auditor.address);
+      await c.createAsset("srv-01", "Web Server 01", "server", "rack A");
+
+      // AUDITOR read-only & NONE: tidak boleh menambah
+      await expect(
+        c.connect(auditor).createAsset("srv-02", "X", "server", "rack A")
+      ).to.be.revertedWithCustomError(c, "NotOperator");
+      await expect(
+        c.connect(outsider).createAsset("srv-02", "X", "server", "rack A")
+      ).to.be.revertedWithCustomError(c, "NotOperator");
+
+      // validasi input
+      await expect(c.createAsset("", "X", "server", "rack A"))
+        .to.be.revertedWithCustomError(c, "EmptyId");
+      await expect(c.createAsset("srv-02", "", "server", "rack A"))
+        .to.be.revertedWithCustomError(c, "EmptyName");
+      await expect(c.createAsset("srv-01", "Duplikat", "server", "rack A"))
+        .to.be.revertedWithCustomError(c, "AssetAlreadyExists")
+        .withArgs("srv-01");
+    });
+
+    it("18. updateAsset: ubah data, updatedBy/updatedAt tercatat, RBAC & validasi", async function () {
+      const { c, analyst, auditor } = await deploy();
+      await c.addAnalyst(analyst.address);
+      await c.addAuditor(auditor.address);
+      await c.createAsset("srv-01", "Web Server 01", "server", "rack A");
+
+      const sebelum = await c.getAsset("srv-01");
+
+      await expect(
+        c.connect(analyst).updateAsset("srv-01", "Web Server 01 (pindah)", "server", "rack C")
+      )
+        .to.emit(c, "AssetUpdated")
+        .withArgs("srv-01", "Web Server 01 (pindah)", "server", analyst.address, anyUint);
+
+      const sesudah = await c.getAsset("srv-01");
+      expect(sesudah[0]).to.equal("Web Server 01 (pindah)");
+      expect(sesudah[2]).to.equal("rack C");
+      expect(sesudah[3]).to.equal(sebelum[3]);       // createdAt TIDAK berubah
+      expect(sesudah[5]).to.equal(sebelum[5]);       // createdBy TIDAK berubah
+      expect(sesudah[6]).to.equal(analyst.address);  // updatedBy berubah
+
+      // jumlah aset tidak bertambah karena update
+      expect(await c.getAssetCount()).to.equal(1n);
+
+      await expect(
+        c.connect(auditor).updateAsset("srv-01", "X", "server", "rack C")
+      ).to.be.revertedWithCustomError(c, "NotOperator");
+      await expect(c.updateAsset("ghost", "X", "server", "rack C"))
+        .to.be.revertedWithCustomError(c, "AssetNotFound").withArgs("ghost");
+      await expect(c.updateAsset("srv-01", "", "server", "rack C"))
+        .to.be.revertedWithCustomError(c, "EmptyName");
+    });
+
+    it("19. deleteAsset: HANYA ADMIN, data benar-benar hilang, daftar tetap konsisten", async function () {
+      const { c, analyst, auditor } = await deploy();
+      await c.addAnalyst(analyst.address);
+      await c.addAuditor(auditor.address);
+      await c.createAsset("a-1", "Aset 1", "server", "rack A");
+      await c.createAsset("a-2", "Aset 2", "database", "rack B");
+      await c.createAsset("a-3", "Aset 3", "endpoint", "meja 1");
+
+      // SOC_ANALYST & AUDITOR tidak boleh menghapus
+      await expect(c.connect(analyst).deleteAsset("a-1"))
+        .to.be.revertedWithCustomError(c, "NotAdmin");
+      await expect(c.connect(auditor).deleteAsset("a-1"))
+        .to.be.revertedWithCustomError(c, "NotAdmin");
+
+      // ADMIN boleh — hapus yang di tengah supaya swap-pop ikut teruji
+      await expect(c.deleteAsset("a-2"))
+        .to.emit(c, "AssetDeleted")
+        .withArgs("a-2", await c.admin(), anyUint);
+
+      expect(await c.getAssetCount()).to.equal(2n);
+      expect(await c.assetExists("a-2")).to.equal(false);
+      expect(await c.getAssetIds()).to.deep.equal(["a-1", "a-3"]);
+      expect(await c.getAssetIdAt(1)).to.equal("a-3");
+
+      // data benar-benar hilang dari state
+      await expect(c.getAsset("a-2"))
+        .to.be.revertedWithCustomError(c, "AssetNotFound").withArgs("a-2");
+      // aset lain tetap utuh
+      expect((await c.getAsset("a-3"))[0]).to.equal("Aset 3");
+      // dan aset yang dipindah posisinya masih bisa dihapus (index ikut diperbaiki)
+      await c.deleteAsset("a-3");
+      expect(await c.getAssetIds()).to.deep.equal(["a-1"]);
+
+      // id yang sudah dihapus boleh dipakai lagi (bukan LogEntry yang immutable)
+      await c.createAsset("a-2", "Aset 2 (baru)", "database", "rack C");
+      expect(await c.getAssetCount()).to.equal(2n);
+      expect((await c.getAsset("a-2"))[0]).to.equal("Aset 2 (baru)");
+
+      await expect(c.deleteAsset("ghost"))
+        .to.be.revertedWithCustomError(c, "AssetNotFound").withArgs("ghost");
+    });
+
+    it("20. canManageAssets: helper UI sesuai RBAC", async function () {
+      const { c, owner, analyst, auditor, outsider } = await deploy();
+      await c.addAnalyst(analyst.address);
+      await c.addAuditor(auditor.address);
+
+      expect(await c.canManageAssets(owner.address)).to.equal(true);
+      expect(await c.canManageAssets(analyst.address)).to.equal(true);
+      expect(await c.canManageAssets(auditor.address)).to.equal(false);
+      expect(await c.canManageAssets(outsider.address)).to.equal(false);
+    });
+
+    it("21. gas CRUD aset (bahan laporan)", async function () {
+      const { c } = await deploy();
+      const gc = (await (await c.createAsset("g-1", "Aset Uji", "server", "rack A")).wait()).gasUsed;
+      const gu = (await (await c.updateAsset("g-1", "Aset Uji 2", "server", "rack B")).wait()).gasUsed;
+      const gd = (await (await c.deleteAsset("g-1")).wait()).gasUsed;
+      console.log("        gas createAsset =", gc.toString());
+      console.log("        gas updateAsset =", gu.toString());
+      console.log("        gas deleteAsset =", gd.toString());
+      expect(gc).to.be.greaterThan(0n);
+      expect(gd).to.be.greaterThan(0n);
+    });
+
+    it("22. log tetap IMMUTABLE walau aset bisa di-CRUD (prinsip keamanan tidak dilanggar)", async function () {
+      const { c } = await deploy();
+      await c.recordLogHash("auth.log", H1);
+
+      // tidak ada fungsi update/delete untuk log di ABI (hanya aset)
+      const namaFungsi = Array.from(c.interface.fragments)
+        .filter((f) => f.type === "function")
+        .map((f) => f.name);
+      const adaUpdateLog = namaFungsi.some((f) => /updateLog|deleteLog|removeLog|setLogHash/i.test(f));
+      expect(adaUpdateLog).to.equal(false);
+
+      // dan memang tidak bisa ditimpa
+      await expect(c.recordLogHash("auth.log", H2))
+        .to.be.revertedWithCustomError(c, "LogAlreadyExists");
+      expect((await c.getLogStatus("auth.log"))[0]).to.equal(H1);
     });
   });
 });

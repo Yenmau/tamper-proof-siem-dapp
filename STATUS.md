@@ -1,5 +1,14 @@
 # 📍 STATUS PROYEK — checkpoint 8 November 2026
 
+> **Update (checkpoint 2, sesi yang sama):** kontrak naik ke **v4.0.0** dengan
+> registry aset (CRUD on-chain), API off-chain (Express + MongoDB), dan halaman
+> login wallet di dashboard — tiga hal yang tadinya masih kurang dari brief tugas.
+> Ringkasnya: requirement 1-6 sekarang terpenuhi (peta lengkap ada di
+> [`README.md`](README.md) bagian "Peta Requirement Tugas → Implementasi").
+> Yang **masih perlu kamu lakukan sendiri**: deploy ulang v4.0 ke Sepolia dari
+> Remix, lalu daftar role ulang (`addAnalyst` Yasin, `addAuditor` Nat) di kontrak
+> baru — lihat [`DEPLOY.md`](DEPLOY.md) bagian v4.0.
+
 Catatan "sampai mana kita". Ditulis oleh Vincent (#1) supaya bisa dilanjutkan
 kapan saja tanpa membaca ulang seluruh riwayat. Fakta di bawah ini hasil
 **eksekusi nyata**, bukan rencana.

@@ -1,14 +1,14 @@
-# File log contoh dipakai untuk uji hashing (SHA-256) — JANGAN biarkan Git
-# mengubah line ending-nya, karena itu mengubah hash file.
-*.log -text
-
-# Bytecode kontrak: harus byte-for-byte sama dengan hasil compile.
-*.bytecode.txt -text
-
-# Skrip shell & config Linux: WAJIB LF. Kalau CRLF ikut ke dalam image,
-# shebang `#!/bin/sh` gagal dibaca ("no such file or directory").
-*.sh text eol=lf
-Dockerfile text eol=lf
-*.Dockerfile text eol=lf
-nginx.conf text eol=lf
-*.conf text eol=lf
+# File log contoh dipakai untuk uji hashing (SHA-256) — JANGAN biarkan Git
+# mengubah line ending-nya, karena itu mengubah hash file.
+*.log -text
+
+# Bytecode kontrak: harus byte-for-byte sama dengan hasil compile.
+*.bytecode.txt -text
+
+# Skrip shell & config Linux: WAJIB LF. Kalau CRLF ikut ke dalam image,
+# shebang `#!/bin/sh` gagal dibaca ("no such file or directory").
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.Dockerfile text eol=lf
+nginx.conf text eol=lf
+*.conf text eol=lf

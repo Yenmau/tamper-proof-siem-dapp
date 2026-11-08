@@ -3,7 +3,10 @@
 # Profil LOKAL (default, semua di dalam Docker):
 #   docker compose --profile local up -d --build
 #   → chain Hardhat 127.0.0.1:8545, kontrak auto-deploy, SSH korban 127.0.0.1:2222,
-#     dashboard http://127.0.0.1:8088
+#     dashboard http://127.0.0.1:8088, API off-chain 127.0.0.1:8089
+#
+# Sejak v4.0 stack ini juga menyalakan MongoDB + API off-chain (data user,
+# CRUD penuh) — lihat integration/backend/api/README.md.
 #
 # Profil SEPOLIA (pakai kontrak yang sudah live, tanpa chain lokal):
 #   isi RPC_URL, CONTRACT_ADDRESS, PRIVATE_KEY di .env lalu
@@ -113,6 +116,45 @@ services:
       - ./infra/siem-batches:/data/batches
     restart: unless-stopped
 
+  # ------------------------------------------- database OFF-CHAIN (MongoDB)
+  mongo:
+    image: mongo:7
+    container_name: siem-mongo
+    restart: unless-stopped
+    volumes:
+      - siem-mongo:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ----------------------------------- API OFF-CHAIN / data user (MongoDB)
+  api:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    image: siem-app:local
+    container_name: siem-api
+    entrypoint: ["/bin/sh", "/repo/docker/api-entrypoint.sh"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+      deploy:
+        condition: service_completed_successfully
+        required: false
+    environment:
+      <<: *app-env
+      STATE_DIR: /state
+      MONGO_URI: mongodb://mongo:27017/siem_offchain
+      PORT: "8089"
+    volumes:
+      - siem-state:/state:ro
+    ports:
+      - "127.0.0.1:${API_PORT:-8089}:8089"
+    restart: unless-stopped
+
   # ------------------------------------------------------ SOC Dashboard (#5)
   dashboard:
     build: ./integration/frontend
@@ -136,6 +178,9 @@ services:
       # BROWSER_RPC_URL sama dengan RPC_URL di .env.
       RPC_URL: ${BROWSER_RPC_URL:-http://127.0.0.1:8545}
       CONTRACT_ADDRESS: ${CONTRACT_ADDRESS:-}
+      # API off-chain juga dipanggil dari browser host, jadi pakai URL yang
+      # bisa diakses host (bukan nama service docker `api`).
+      API_BASE_URL: ${BROWSER_API_URL:-http://127.0.0.1:8089}
       CHAIN_ID: ${CHAIN_ID:-31337}
       NETWORK_NAME: ${NETWORK_NAME:-Hardhat lokal}
       POLL_SECONDS: ${POLL_SECONDS:-10}
@@ -147,3 +192,4 @@ services:
 volumes:
   siem-state:
   victim-logs:
+  siem-mongo:
