@@ -56,6 +56,9 @@ Mode di luar `record`/`watch` (sudah ada di `main`):
   tidak perlu MongoDB — cocok dipakai auditor (#6 Nat).
 - `batch <manifest.txt>` — banyak `logId` dalam **satu** transaksi
   `recordLogHashBatch` (hemat ~17% gas/log); ada di kedua skrip.
+- `collectorService.js` (`npm run collector`) — daemon yang merekam batch baru
+  dari log-shipper (#3) dan mengecek integritasnya berkala; inilah yang dipakai
+  stack `docker compose` gabungan, jadi tidak perlu jalan manual per file.
 
 **Bisa mulai SEKARANG tanpa role.** Uji di node lokal (`npx hardhat node`) — di situ akunmu
 otomatis admin, jadi `recordLogHash` / `verifyLogIntegrity` bisa langsung dicoba. Role

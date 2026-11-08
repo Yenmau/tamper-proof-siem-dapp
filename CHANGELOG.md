@@ -11,6 +11,25 @@ Semua perubahan penting pada smart contract. Format mengikuti
 `contracts/SIEMLogger.sol` **tidak disentuh**; ABI, bytecode, dan alamat Sepolia
 tetap sama. Bagian ini mencatat perubahan di sekitarnya supaya jejaknya jelas.
 
+### Added — `collectorService.js` (batch log → on-chain, otomatis)
+
+- **Daemon baru** `integration/backend/collectorService.js`: membaca `index.ndjson`
+  hasil log-shipper (#3), merekam batch yang belum terdaftar (beberapa batch
+  sekaligus dalam satu `recordLogHashBatch` — terukur 218.226 vs 253.838 gas/batch),
+  lalu mengecek ulang integritas tiap `VERIFY_INTERVAL_MS` lewat
+  `verifyLogIntegrityView` (gratis) dan hanya mengirim transaksi alarm kalau
+  memang berbeda atau file hilang.
+- `lib/batch-queue.js` — logika antrean (parse index, batch pending, jadwal
+  verifikasi, update state) dipisah supaya murni dan bisa diuji tanpa jaringan;
+  **12 unit test** baru (`test/batch-queue.test.js`, total backend 40 test).
+- State disimpan di `<BATCH_DIR>/.collector-state.json` secara atomik (`.tmp` +
+  `rename`); batch yang sudah `tampered` tidak dicek ulang karena flag on-chain
+  satu arah (hemat gas).
+- `npm run collector` sebagai jalan pintas, `--once` untuk satu putaran (uji/CI).
+- Diuji end-to-end: batch dari server korban direkam otomatis; isi batch diubah →
+  `TamperingDetected` (52.429 gas); batch dihapus → alarm dengan
+  `0x__LOG_FILE_MISSING__` (50.441 gas); 3 batch baru → 1 transaksi.
+
 ### Added — Merkle proof per baris + batch record (menutup sisa pekerjaan #2)
 
 - **Merkle proof per baris.** Sebelumnya klaim "baris ke-i tidak berubah" hanya

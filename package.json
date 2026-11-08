@@ -6,8 +6,9 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
-    "test:backend": "node integration/backend/test/core.test.js",
-    "lint:backend": "node --check integration/backend/lib/collector-core.js && node --check integration/backend/logCollector.js && node --check integration/backend/merkleCollector.js && node --check integration/backend/test/core.test.js"
+    "test:backend": "node integration/backend/test/core.test.js && node integration/backend/test/batch-queue.test.js",
+    "lint:backend": "node --check integration/backend/lib/collector-core.js && node --check integration/backend/lib/batch-queue.js && node --check integration/backend/logCollector.js && node --check integration/backend/merkleCollector.js && node --check integration/backend/collectorService.js && node --check integration/backend/test/core.test.js && node --check integration/backend/test/batch-queue.test.js",
+    "collector": "node integration/backend/collectorService.js"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",
