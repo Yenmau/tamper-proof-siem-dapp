@@ -368,6 +368,36 @@ browser terhadap Merkle Root on-chain, bukan dari backend.
 Reset bersih: `docker compose --profile local down -v`, lalu kosongkan
 `infra/siem-batches/` kecuali `.gitkeep`.
 
+### Skrip pintasan & dashboard mode Sepolia
+
+Dua file `.bat` untuk Windows (klik dua kali, Docker Desktop harus menyala) dan satu
+override compose supaya **dashboard** menunjuk ke kontrak yang sudah live di Sepolia
+tanpa mengubah cara kerja service lain:
+
+| File | Fungsi |
+|---|---|
+| [`jalankan-dashboard-sepolia.bat`](jalankan-dashboard-sepolia.bat) | `up -d` seluruh stack, lalu arahkan dashboard ke kontrak Sepolia (`0x08129667…D85b796e9`) |
+| [`matikan-stack.bat`](matikan-stack.bat) | `docker compose down` — semua container berhenti, **data tidak dihapus** |
+| [`docker-compose.sepolia.yml`](docker-compose.sepolia.yml) | override env khusus service `dashboard` (RPC + alamat kontrak + chainId + nama network) |
+
+Perintah manualnya sama saja:
+
+```bash
+# dashboard -> kontrak Sepolia (service lain tetap di chain lokal)
+docker compose -f docker-compose.yml -f docker-compose.sepolia.yml --profile local up -d --no-deps dashboard
+
+# kembali ke chain lokal
+docker compose --profile local up -d --no-deps dashboard
+
+# berhenti (data tetap) / reset total (data hilang)
+docker compose --profile local down
+docker compose --profile local down -v
+```
+
+> Di mode Sepolia, tab *Registry aset* menampilkan state kontrak testnet (kalau tidak ada
+> aset, tampil `0 aset` — itu memang data on-chain, bukan error). Tab *Dashboard log*
+> tetap kosong karena yang merekam hash log adalah service collector di chain lokal.
+
 ---
 
 ## 🔌 Integration Kit (sambungan ke tim)
