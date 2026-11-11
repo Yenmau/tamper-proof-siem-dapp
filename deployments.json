@@ -3,10 +3,59 @@
   "11155111": {
     "network": "sepolia",
     "contract": "SIEMLogger",
-    "address": "0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd",
-    "deployTxHash": "0x71a20cefe683532fbb4b8abbd184af83bf584c7b7cbbff16e8fcd1b95704eba2",
-    "deployedAt": "2026-10-10T22:30:12+07:00",
-    "explorer": "https://sepolia.etherscan.io/address/"
+    "address": "0x08129667d39d7e380Ac08d1359FeB5AD85b796e9",
+    "deployTxHash": "0x55dcef0670a07e63b97e853c17b23c5175ab77740b3e024263a40775a1a5311a",
+    "deployBlock": 12108967,
+    "deployedAt": "2026-11-11T10:04:48+07:00",
+    "version": "4.0.0",
+    "explorer": "https://sepolia.etherscan.io/address/",
+    "roles": {
+      "ADMIN": "0x6BBd8F8c13dF812fbDEB6E13145E82F7c74e9297",
+      "SOC_ANALYST": "0x78ab74A8d8AA1490ECB3F806fE1e25f40DcF88a0",
+      "AUDITOR": "0x5B2f712b539171b1Ff4b6812AAB09A6F6b15a5d0"
+    },
+    "rolesNote": "AUDITOR = akun uji Vincent (sementara). Kalau alamat Nat (#6) sudah tersedia: removeRole(0x5B2f...) lalu addAuditor(<alamat Nat>).",
+    "previousDeployment": {
+      "address": "0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd",
+      "version": "3.0.0",
+      "deployedAt": "2026-10-10T22:30:12+07:00",
+      "note": "v3.0 — belum punya registry aset. Digantikan oleh deploy v4.0 di atas."
+    },
+    "evidence": {
+      "createAsset": {
+        "tx": "0xd058b32d6a86651e5201922b8b34ffd849eb7f27006cf3fba647b172e13b2a05",
+        "block": 12109017,
+        "at": "2026-11-11T10:15:24+07:00",
+        "gasUsed": 1022303,
+        "arg": "ASSET-001 / Server Dell R740 / hardware / Rack A1"
+      },
+      "updateAsset": {
+        "tx": "0xdc011de3d17a64ba5186be6ed64fb3be513ace39706602c3f9116d311c26a072",
+        "block": 12109030,
+        "at": "2026-11-11T10:18:00+07:00",
+        "gasUsed": 69350,
+        "arg": "ASSET-001 / Server Dell R740 (v2) / hardware / Rack B2"
+      },
+      "deleteAsset": {
+        "tx": "0x4d3a6c7b6a8576ce2bccd197dc95a6c4e772143b662ade30e0704ee9b8bb309e",
+        "block": 12109031,
+        "at": "2026-11-11T10:18:12+07:00",
+        "gasUsed": 108913,
+        "arg": "ASSET-001 (setelah delete: getAssetCount = 0, getAsset('ASSET-001') revert AssetNotFound)"
+      },
+      "addAnalyst_yasin": {
+        "tx": "0xe0ca12127e68d3863121ef8423d441424e61b6252ca9a8307b285db636275019",
+        "block": 12108978,
+        "at": "2026-11-11T10:07:00+07:00",
+        "gasUsed": 133429
+      },
+      "addAuditor_uji": {
+        "tx": "0xd82c85d98e2c31f0feb6fe0e7c9f3f795c2fa1984007beacf60b3bbf1c527769",
+        "block": 12108984,
+        "at": "2026-11-11T10:08:24+07:00",
+        "gasUsed": 133408
+      }
+    }
   },
   "80002": {
     "network": "polygon-amoy",

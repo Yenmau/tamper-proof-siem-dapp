@@ -22,8 +22,8 @@ Terakhir diperbarui: 2026-10-10 (sesi 2)
 | Deliverable | Status | Lokasi |
 |---|---|---|
 | `contracts/SIEMLogger.sol` | ✅ | [contracts/SIEMLogger.sol](contracts/SIEMLogger.sol) |
-| `contracts/SIEMLogger.json` (ABI) | ✅ 44 entri | [contracts/SIEMLogger.json](contracts/SIEMLogger.json) |
-| Contract Address hasil testnet | ✅ Sepolia `0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd` | [deployments.json](deployments.json) |
+| `contracts/SIEMLogger.json` (ABI) | ✅ 60 entri | [contracts/SIEMLogger.json](contracts/SIEMLogger.json) |
+| Contract Address hasil testnet | ✅ Sepolia `0x08129667d39d7e380Ac08d1359FeB5AD85b796e9` (v4.0.0, 11 Nov 2026) | [deployments.json](deployments.json) |
 
 Itu saja. **4 dari 4 tugas beres.** ✅
 
@@ -37,11 +37,11 @@ Kontrak sudah **live di Sepolia**. Tidak ada lagi langkah deploy yang tersisa.
 
 | Item | Nilai |
 |---|---|
-| Contract Address | `0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd` |
-| Deploy tx hash | `0x71a20cefe683532fbb4b8abbd184af83bf584c7b7cbbff16e8fcd1b95704eba2` |
+| Contract Address | `0x08129667d39d7e380Ac08d1359FeB5AD85b796e9` (v4.0.0 — 11 Nov 2026) |
+| Deploy tx hash | `0x55dcef0670a07e63b97e853c17b23c5175ab77740b3e024263a40775a1a5311a` |
 | Network | Sepolia (chainId `11155111`) |
-| Deployed | 2026-10-10 22:30 WIB (blok 11885443) |
-| Explorer | https://sepolia.etherscan.io/address/0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd |
+| Deployed | 2026-11-11 10:04 WIB (blok 12108967) |
+| Explorer | https://sepolia.etherscan.io/address/0x08129667d39d7e380Ac08d1359FeB5AD85b796e9 |
 | Tercatat di | [`deployments.json`](deployments.json) — commit `a384439` |
 
 Prosedur lengkap (untuk Amoy atau re-deploy) tetap ada di **[DEPLOY.md](DEPLOY.md)**.
