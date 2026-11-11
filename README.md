@@ -10,9 +10,9 @@ Sisi "database"-nya memang blockchain: hash log, registry aset, dan role akun
 disimpan sebagai state kontrak; data pribadi user (nama/email) disimpan off-chain
 di MongoDB karena tidak layak dibayar gas dan tidak perlu publik.
 
-**Kontrak live (Sepolia): [`0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd`](https://sepolia.etherscan.io/address/0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd)**
-(versi v3.0; v4.0 menyusul di-deploy ulang) — lihat [`deployments.json`](deployments.json)
-dan [`HANDOVER.md`](HANDOVER.md).
+**Kontrak live (Sepolia): [`0x08129667d39d7e380Ac08d1359FeB5AD85b796e9`](https://sepolia.etherscan.io/address/0x08129667d39d7e380Ac08d1359FeB5AD85b796e9)**
+(versi **v4.0.0** — registry aset on-chain sudah aktif di testnet, deploy 11 Nov 2026
+10:04 WIB) — lihat [`deployments.json`](deployments.json) dan [`HANDOVER.md`](HANDOVER.md).
 
 📍 **Status terkini, bukti uji, dan sisa pekerjaan: [`STATUS.md`](STATUS.md)**
 
@@ -65,7 +65,7 @@ Ringkasan untuk penilaian: di mana setiap poin brief dipenuhi.
 | 4 | Otorisasi 3 role (Admin, SOC Analyst, Auditor) | ✅ selesai (v3.0), dipakai juga oleh registry aset (v4.0) | lihat [Matriks RBAC](#-rbac--3-role) |
 | 5 | File ABI (JSON) | ✅ 60 entri, dibuat otomatis (`npm run export-abi`) & dicek CI | [`contracts/SIEMLogger.json`](contracts/SIEMLogger.json) |
 | 6 | Bytecode (bonus) | ✅ 8.948 byte | [`contracts/SIEMLogger.bytecode.txt`](contracts/SIEMLogger.bytecode.txt) |
-| 7 | Deploy testnet + Contract Address | ✅ **Sepolia** `0x1E6b...0BbBd` | [`deployments.json`](deployments.json) |
+| 7 | Deploy testnet + Contract Address | ✅ **Sepolia** `0x08129667…D85b796e9` (v4.0.0, 11 Nov 2026) | [`deployments.json`](deployments.json) |
 | 8 | Kit integrasi (backend + frontend) | ✅ selesai & diuji end-to-end | [`integration/`](integration/) |
 | 9 | **Authentication login pakai wallet address** | ✅ halaman login + role dibaca dari kontrak | [`Login.jsx`](integration/frontend/src/components/Login.jsx) |
 | 10 | **Registry aset on-chain (CRUD penuh)** | ✅ `createAsset` / `updateAsset` / `deleteAsset` (v4.0) | `contracts/SIEMLogger.sol` · test 16-22 |
@@ -424,12 +424,15 @@ dengan `logId` yang terbaca, dan `isTampered` menjadi `true` on-chain.
 - [x] **v3.0** — RBAC 3 role (Admin / SOC Analyst / Auditor),
       `setRole` / `removeRole` / `addAnalyst` / `addAuditor`,
       event `RoleAssigned` / `RoleRevoked`.
-- [x] **v3.1** — deploy ke Sepolia ✅ (`0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd`);
+- [x] **v3.1** — deploy pertama ke Sepolia ✅ (`0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd`,
+      sudah digantikan oleh deploy v4.0);
       Amoy + verifikasi explorer menyusul.
 - [x] **v4.0** — registry aset on-chain dengan CRUD penuh (`createAsset` /
       `updateAsset` / `deleteAsset` / `getAsset`), RBAC diperluas ke data aset,
       event `AssetCreated`/`AssetUpdated`/`AssetDeleted`. Hash log tetap immutable.
-      Menyusul: deploy ulang ke Sepolia + daftar role ulang di kontrak baru.
+      **Deploy ulang ke Sepolia ✅ 11 Nov 2026** (`0x08129667d39d7e380Ac08d1359FeB5AD85b796e9`)
+      + role didaftarkan ulang (ADMIN / SOC_ANALYST / AUDITOR) + CRUD aset diuji di testnet
+      (`ASSET-001`: create → update → delete, `getAssetCount` balik `0`).
 - [ ] **v4.0** (kalau waktu cukup) — hash disimpan sebagai `bytes32`
       (hemat gas signifikan dari penyimpanan string) + Merkle root per batch.
 

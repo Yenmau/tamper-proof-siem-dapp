@@ -1,13 +1,12 @@
 # 🤝 HANDOVER — dari #1 (Smart Contract) ke Tim
 
 Dokumen serah terima. Ditulis oleh **Vincent (#1 — Smart Contract Developer / Web3 Lead)**.
-Terakhir diperbarui: 2026-11-08 (kontrak v4.0 — registry aset, API off-chain, login wallet).
+Terakhir diperbarui: 2026-11-11 (kontrak v4.0 **sudah live di Sepolia**, role terpasang, CRUD aset teruji).
 
-> **Penting untuk v4.0:** kontrak di Sepolia masih v3.0. Setelah v4.0 di-deploy
-> ulang, **semua role harus didaftarkan ulang** di alamat kontrak yang baru
-> (`addAnalyst` untuk Yasin, `addAuditor` untuk Nat) dan `deployments.json`
-> diperbarui. Langkahnya ada di [`DEPLOY.md`](DEPLOY.md) bagian "v4.0 — deploy
-> ulang wajib".
+> **Status v4.0:** kontrak v4.0 sudah di-deploy ulang ke Sepolia
+> (`0x08129667d39d7e380Ac08d1359FeB5AD85b796e9`, 11 Nov 2026) dan **semua role sudah
+> didaftarkan ulang** di alamat baru itu. Alamat v3.0 lama (`0x1E6b…0BbBd`) sudah tidak
+> dipakai — selalu baca alamat terbaru dari [`deployments.json`](deployments.json).
 
 Tujuannya: supaya **Yasin (#2 backend)** dan **Joseph (#5 frontend)** langsung paham
 apa yang sudah jadi, apa yang mereka terima, dan dari mana mereka mulai.
@@ -18,12 +17,13 @@ apa yang sudah jadi, apa yang mereka terima, dan dari mana mereka mulai.
 
 | Item | Nilai |
 |---|---|
-| Contract Address | `0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd` |
+| Contract Address | `0x08129667d39d7e380Ac08d1359FeB5AD85b796e9` |
 | Network | Sepolia (chainId `11155111`) |
 | RPC yang dipakai | `https://ethereum-sepolia-rpc.publicnode.com` |
-| Explorer | https://sepolia.etherscan.io/address/0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd |
+| Explorer | https://sepolia.etherscan.io/address/0x08129667d39d7e380Ac08d1359FeB5AD85b796e9 |
 | ABI | [`contracts/SIEMLogger.json`](contracts/SIEMLogger.json) |
-| Versi kontrak | `3.0.0` |
+| Versi kontrak | `4.0.0` |
+| Tx deploy | `0x55dcef06…a5311a` (blok 12108967, 11 Nov 2026 10:04 WIB) |
 | Sumber tunggal alamat | [`deployments.json`](deployments.json) |
 
 Owner / **ADMIN** = akun deployer (`0x6bbd8f8c13df812fbdeb6e13145e82f7c74e9297`).
@@ -92,12 +92,15 @@ dan gratis (0 gas). Tidak ada fungsi tulis yang dipanggil dari frontend.
 | Akun | Alamat publik | Role | Status |
 |---|---|---|---|
 | Vincent (#1, owner/deployer) | `0x6BBd8F8c13dF812fbDEB6E13145E82F7c74e9297` | ADMIN | ✅ otomatis saat deploy |
-| Yasin (#2, backend) | `0x78ab74A8d8AA1490ECB3F806fE1e25f40DcF88a0` | SOC_ANALYST | ✅ terpasang (blok 11885571) |
-| Nat (#6, auditor) | — | AUDITOR | ⏳ menunggu alamat |
+| Yasin (#2, backend) | `0x78ab74A8d8AA1490ECB3F806fE1e25f40DcF88a0` | SOC_ANALYST | ✅ terpasang (blok 12108978) |
+| Akun uji Vincent (sementara) | `0x5B2f712b539171b1Ff4b6812AAB09A6F6b15a5d0` | AUDITOR | ✅ terpasang (blok 12108984) |
+| Nat (#6, auditor) | — | AUDITOR | ⏳ menunggu alamat (akan menggantikan akun uji di atas) |
 
 Yang masih pending:
 
-- [ ] `addAuditor(<alamat Nat>)` → `AUDITOR`
+- [ ] `removeRole(0x5B2f712b539171b1Ff4b6812AAB09A6F6b15a5d0)` lalu `addAuditor(<alamat Nat>)`
+      — pemegang AUDITOR saat ini **akun uji Vincent sendiri**, bukan akun Nat. Jangan
+      ditulis sebagai milik Nat sampai alamatnya benar-benar diganti.
 - [ ] (opsional) Verifikasi kontrak di Etherscan agar bisa dibaca/ditulis dari explorer
 
 Cara minta role: kirim **alamat publik** ke Vincent — format `0x...` (42 karakter),

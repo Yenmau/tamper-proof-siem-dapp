@@ -3,17 +3,18 @@
 Dokumen ini adalah **titik lanjut**. Kalau sesi baru dibuka, baca ini dulu: isinya
 apa yang sudah jadi, bukti ujinya, cara menyalakan ulang, dan apa yang masih kurang.
 
-**Checkpoint 3 — 8 November 2026** (dApp Development: requirement brief sudah
-dipenuhi di kode; tinggal deploy ulang ke testnet).
+**Checkpoint 4 — 11 November 2026** (dApp Development: requirement brief terpenuhi di
+kode **dan sudah live di testnet** — kontrak v4.0 di Sepolia, 3 role terpasang, CRUD
+aset + CRUD data user teruji).
 
 | Item | Nilai |
 |---|---|
-| `main` terakhir | `640ac3f` (merge PR #13) |
+| `main` terakhir | `ff394a9` (merge PR #14) |
 | PR / issue terbuka | 0 / 0 |
 | CI di `main` | ✅ hijau 3/3 (kontrak+backend, dashboard, stack) |
 | Test | 22 kontrak · 59 backend+API · 16 smoke API |
-| Kontrak Sepolia (LIVE) | `0x1E6b3BFb571910e05080dDD16ecc2AC0f760BbBd` — **masih v3.0** |
-| Kontrak versi kode | **v4.0.0** (registry aset + CRUD) |
+| Kontrak Sepolia (LIVE) | `0x08129667d39d7e380Ac08d1359FeB5AD85b796e9` — **v4.0.0** (deploy 11 Nov 2026 10:04 WIB) |
+| Role Sepolia | ADMIN `0x6BBd…e9297` · SOC_ANALYST `0x78ab…88a0` · AUDITOR `0x5B2f…a5d0` (akun uji, Nat menyusul) |
 | Stack lokal | jalan & sehat (chain, victim, collector, mongo, api, dashboard) |
 
 ---
@@ -22,7 +23,7 @@ dipenuhi di kode; tinggal deploy ulang ke testnet).
 
 | # | Requirement dApp Development | Status | Di mana |
 |---|---|---|---|
-| 1 | On-chain data disimpan di blockchain | ✅ | `contracts/SIEMLogger.sol` (hash log, aset, role) |
+| 1 | On-chain data disimpan di blockchain | ✅ | `contracts/SIEMLogger.sol` (hash log, aset, role) — **live di Sepolia v4.0.0** |
 | 2 | Tema aplikasi | ✅ | registry log anti-tamper + registry aset |
 | 3 | Authorization ≥3 role | ✅ | `ADMIN` / `SOC_ANALYST` / `AUDITOR` (on-chain) |
 | 4 | Authentication login pakai wallet address | ✅ | `Login.jsx` → `getRoleName(address)`; API off-chain verifikasi `personal_sign` |
@@ -51,8 +52,12 @@ permanen `AssetDeleted`.
 | Dashboard, mode hanya-baca | tabel + alarm tetap jalan, tulis mati |
 | Pipeline log v4.0 | batch direkam (253.904 gas) → serangan hapus baris → `TamperingDetected` (52.452 gas) → banner 🚨 + 🔴 TAMPERED |
 | CI | branch & `main` hijau 3/3 (termasuk cek ABI sinkron + validasi compose) |
+| **Sepolia v4.0 (11 Nov 2026)** | kontrak `0x08129667…D85b796e9`, `VERSION()` = `4.0.0` dibaca dari chain; `getRoleName` → ADMIN / SOC_ANALYST / AUDITOR; `canManageAssets(AUDITOR)` = `false` |
+| **CRUD aset di Sepolia** | `ASSET-001` create (1.022.303 gas) → update (69.350) → delete (108.913), lalu `getAssetCount` = `0` dan `getAsset('ASSET-001')` revert `AssetNotFound` |
 
-Angka gas CRUD aset: create ~233k · update ~52k · delete ~60k (bahan laporan).
+Angka gas CRUD aset (chain lokal): create ~233k · update ~52k · delete ~60k. Di Sepolia
+angkanya lebih besar (Remix menaksir gas limit tinggi): create 1.022.303 · update 69.350 ·
+delete 108.913 — bahan laporan.
 
 ---
 
@@ -99,16 +104,23 @@ sleep 40 && docker logs siem-collector | tail -5     # 🔴 TAMPERED + alarm on-
 
 Urut prioritas. Tanda 🔑 = hanya bisa dikerjakan Vincent (butuh MetaMask/key sendiri).
 
-1. 🔑 **Deploy ulang v4.0 ke Sepolia dari Remix** — kontrak live masih v3.0, jadi
-   fitur registry aset & login-untuk-aset belum ada di testnet.
-   Compile: Solidity `0.8.26` + optimizer `200` + EVM `paris`.
-   Langkah lengkap: [`DEPLOY.md`](DEPLOY.md) bagian **"v4.0 — deploy ulang wajib"**.
-2. 🔑 **Daftar role ULANG di kontrak baru** (role tidak ikut pindah saat redeploy):
-   `addAnalyst(0x78ab74A8d8AA1490ECB3F806fE1e25f40DcF88a0)` (Yasin) ·
-   `addAuditor(<alamat Nat>)` — alamat Nat masih ditunggu.
-3. 🔑 Perbarui `deployments.json` (alamat + tx hash + tanggal) dan bagian alamat di
-   `HANDOVER.md` / `README.md` (yang sekarang menyebut "(versi v3.0; v4.0 menyusul)").
-4. Opsional: verifikasi kontrak di Etherscan · deploy ke Amoy (`deployments.json`
+1. ✅ **Deploy ulang v4.0 ke Sepolia — SELESAI 11 Nov 2026.** Kontrak
+   `0x08129667d39d7e380Ac08d1359FeB5AD85b796e9` (v4.0.0), tx
+   `0x55dcef0670a07e63b97e853c17b23c5175ab77740b3e024263a40775a1a5311a`.
+   Fitur registry aset & RBAC sudah aktif di testnet; selector
+   `createAsset`/`updateAsset`/`deleteAsset`/`getAsset*` terbukti ada di bytecode
+   Sepolia. Catatan: deploy kali ini memakai **30.719.107 gas (~0.046 ETH)** —
+   anomali yang sama seperti deploy v3.0 (14,16 juta gas), layak dibahas di laporan.
+2. ✅ **Daftar role ULANG — SELESAI:** `addAnalyst(0x78ab74A8d8AA1490ECB3F806fE1e25f40DcF88a0)`
+   (Yasin, SOC_ANALYST, blok 12108978) · `addAuditor(0x5B2f712b539171b1Ff4b6812AAB09A6F6b15a5d0)`
+   (AUDITOR, blok 12108984 — **akun uji Vincent, sementara**).
+   Sisa: begitu alamat **Nat (#6)** ada → `removeRole(0x5B2f…)` + `addAuditor(<alamat Nat>)`.
+3. ✅ **Dokumen sudah diperbarui** (`deployments.json`, `HANDOVER.md`, `README.md`,
+   `DEPLOY.md` + RPC `rpc.sepolia.org` yang 404 diganti `publicnode`).
+   Bukti CRUD testnet: create `0xd058b32d…` → update `0xdc011de3…` → delete
+   `0x4d3a6c7b…`, `getAssetCount` balik `0`, `getAsset('ASSET-001')` revert `AssetNotFound`.
+4. Opsional: verifikasi kontrak di Etherscan (belum di-verify — tombolnya masih
+   tersedia di halaman kontrak) · deploy ke Amoy (`deployments.json`
    slot `80002` masih kosong) · uji profil **Sepolia** pada `docker compose`.
 5. Bukan bagian brief dApp, tapi jobdesk tim: skrip/skenario red team **Michael (#4)**
    dan laporan audit + CVSS **Nat (#6)** belum ada artefaknya di repo.

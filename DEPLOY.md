@@ -9,12 +9,45 @@ Dokumen ini dipakai Vincent (Smart Contract / Web3 Lead) untuk men-deploy
 
 ---
 
-## ⚡ v4.0 — deploy ulang wajib (dan role harus didaftarkan ULANG)
+## ✅ v4.0 — SUDAH di-deploy ulang ke Sepolia (11 Nov 2026)
 
-Kontrak di Sepolia sekarang masih **v3.0** (`0x1E6b…0BbBd`). Versi **v4.0**
-menambahkan registry aset (`createAsset` / `updateAsset` / `deleteAsset`), jadi
-kontrak itu **harus di-deploy ulang** — fungsi baru tidak bisa muncul di kontrak
-yang sudah terlanjur live (bytecode tidak bisa ditambal).
+| Item | Nilai |
+|---|---|
+| Contract Address | `0x08129667d39d7e380Ac08d1359FeB5AD85b796e9` |
+| Versi | `4.0.0` (registry aset + RBAC 3 role) |
+| Tx deploy | `0x55dcef0670a07e63b97e853c17b23c5175ab77740b3e024263a40775a1a5311a` |
+| Blok / waktu | 12108967 · 11 Nov 2026 10:04:48 WIB |
+| Role terpasang | ADMIN `0x6BBd…e9297` · SOC_ANALYST `0x78ab…88a0` · AUDITOR `0x5B2f…a5d0` (akun uji) |
+| Uji CRUD di testnet | `ASSET-001`: create (`0xd058b32d…`) → update (`0xdc011de3…`) → delete (`0x4d3a6c7b…`), `getAssetCount` balik `0` |
+
+Kontrak v3.0 lama (`0x1E6b…0BbBd`) **sudah tidak dipakai**. Fungsi baru tidak bisa
+"ditambal" ke kontrak yang sudah live, jadi deploy ulang memang satu-satunya jalan.
+Riwayat lengkap setiap tx ada di [`deployments.json`](deployments.json).
+
+**Sisa yang masih terbuka:**
+
+- AUDITOR masih dipegang **akun uji Vincent** (`0x5B2f…a5d0`), bukan akun Nat. Begitu
+  alamat Nat (#6) tersedia: `removeRole(0x5B2f…)` lalu `addAuditor(<alamat Nat>)`.
+- (opsional) Verifikasi kontrak di Etherscan · deploy ke Amoy.
+
+Bagian 0-10 di bawah tetap berlaku kalau nanti perlu deploy lagi (Amoy, mainnet, atau
+redeploy berikutnya) — langkahnya tidak berubah, hanya network-nya.
+
+### Kalau perlu redeploy lagi (referensi)
+
+Catatan penting saat deploy ulang: **role tidak ikut pindah**. Kontrak baru hanya
+mengenal deployer sebagai `ADMIN`, jadi Yasin/Nat harus didaftarkan ulang lewat
+bagian 7. Verifikasi cepat dari Remix: `VERSION()` → `4.0.0` ·
+`getRoleName(0x78ab…)` → `SOC_ANALYST` · `getAssetCount()` → `0`.
+Sementara belum di-deploy, semua fitur v4.0 bisa dicoba lokal:
+`docker compose --profile local up -d --build` (lihat README bagian 🐳).
+
+### Lama (sudah dikerjakan)
+
+Berikut konteks historisnya: kontrak yang dulu live masih v3.0 (`0x1E6b…0BbBd`) —
+versi v4.0 menambahkan registry aset (`createAsset` / `updateAsset` / `deleteAsset`)
+sehingga kontrak itu harus di-deploy ulang. Compile wajib sama: **Solidity 0.8.26 +
+optimizer 200 + EVM paris** supaya ABI/bytecode identik dengan hasil `npm test`.
 
 Langkahnya sama seperti deploy biasa (bagian 3-5 di bawah), dengan dua catatan:
 
@@ -63,7 +96,7 @@ Buka **MetaMask → pilih network di atas → Add network → Add a network manu
 | Field | Nilai |
 |---|---|
 | Network name | `Sepolia` |
-| RPC URL | `https://rpc.sepolia.org` |
+| RPC URL | `https://ethereum-sepolia-rpc.publicnode.com` |
 | Chain ID | `11155111` |
 | Currency symbol | `ETH` |
 | Block explorer | `https://sepolia.etherscan.io` |
@@ -235,7 +268,7 @@ kontrak), lalu bagikan 3 hal ini ke grup:
 ```
 1. Contract Address : 0x................................
 2. Network          : Sepolia (chainId 11155111)
-3. RPC URL          : https://rpc.sepolia.org   (atau endpoint Alchemy sendiri)
+3. RPC URL          : https://ethereum-sepolia-rpc.publicnode.com   (atau endpoint Alchemy sendiri)
 4. ABI              : contracts/SIEMLogger.json
 5. Akun pengirim tx : alamat MetaMask yang sudah kamu jadikan admin
                       (butuh saldo testnet untuk gas)
