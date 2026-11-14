@@ -86,6 +86,7 @@ harus dibereskan dulu.
 
 | File (klik dua kali) | Isi |
 |---|---|
+| `jalankan-stack-lokal.bat` | mode **chain lokal** (chainId 31337) — dipakai untuk demo alarm tampering; aman dijalankan setelah laptop baru dinyalakan |
 | `jalankan-dashboard-sepolia.bat` | `up -d` stack, lalu mengarahkan **dashboard ke kontrak v4.0 Sepolia** (`0x08129667…6e9`) |
 | `matikan-stack.bat` | `docker compose down` **tanpa** menghapus data (chain, MongoDB, batch log tetap tersimpan) |
 
@@ -170,6 +171,12 @@ Urut prioritas. Tanda 🔑 = hanya bisa dikerjakan Vincent (butuh MetaMask/key s
   Engine butuh ~1–3 menit setelah Docker Desktop dibuka.
 - **Jangan pakai `up -d --build`.** `registry-1.docker.io` tidak terjangkau dari host ini,
   jadi build selalu berhenti di tahap load metadata. Pakai `up -d` biasa (image lokal sudah ada).
+- **Chain lokal tidak menyimpan state.** Setiap kali container `siem-chain` (atau laptop) restart,
+  chain kembali ke blok 0 dan **kontraknya hilang**. Karena itu selalu jalankan
+  `docker compose --profile local up -d` (atau `jalankan-stack-lokal.bat`) setelah nyala —
+  service `deploy` idempoten: ia cek `eth_getCode`, deploy ulang kalau kosong, lalu menulis
+  ulang alamat ke `/state`. `jalankan-dashboard-sepolia.bat` juga sudah menjalankan `up -d`
+  lebih dulu, jadi aman dipakai dari kondisi dingin.
 - **`.sh` wajib LF.** CRLF bikin shebang gagal di dalam container; CI menolaknya.
 - **`main` dilindungi ruleset** → semua perubahan lewat branch + PR. `gh` belum login;
   buka/merge PR memakai token dari `git credential fill` lalu GitHub REST API
