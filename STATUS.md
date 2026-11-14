@@ -3,19 +3,19 @@
 Dokumen ini adalah **titik lanjut**. Kalau sesi baru dibuka, baca ini dulu: isinya
 apa yang sudah jadi, bukti ujinya, cara menyalakan ulang, dan apa yang masih kurang.
 
-**Checkpoint 4 — 11 November 2026** (dApp Development: requirement brief terpenuhi di
+**Checkpoint 5 — 14 November 2026** (dApp Development: requirement brief terpenuhi di
 kode **dan sudah live di testnet** — kontrak v4.0 di Sepolia, 3 role terpasang, CRUD
-aset + CRUD data user teruji).
+aset + CRUD data user teruji; stack sekarang bisa dinyalakan 1 klik lewat `.bat`).
 
 | Item | Nilai |
 |---|---|
-| `main` terakhir | `ff394a9` (merge PR #14) |
+| `main` terakhir | `d39b3f7` (merge PR #16 — skrip pintasan `.bat` + dashboard mode Sepolia) |
 | PR / issue terbuka | 0 / 0 |
-| CI di `main` | ✅ hijau 3/3 (kontrak+backend, dashboard, stack) |
+| CI di `main` | ✅ hijau (3 workflow di `d39b3f7`: kontrak+backend, dashboard, stack) |
 | Test | 22 kontrak · 59 backend+API · 16 smoke API |
 | Kontrak Sepolia (LIVE) | `0x08129667d39d7e380Ac08d1359FeB5AD85b796e9` — **v4.0.0** (deploy 11 Nov 2026 10:04 WIB) |
 | Role Sepolia | ADMIN `0x6BBd…e9297` · SOC_ANALYST `0x78ab…88a0` · AUDITOR `0x5B2f…a5d0` (akun uji, Nat menyusul) |
-| Stack lokal | jalan & sehat (chain, victim, collector, mongo, api, dashboard) |
+| Nyalakan stack | klik `jalankan-dashboard-sepolia.bat` (dashboard → kontrak Sepolia) atau `docker compose --profile local up -d` (chain lokal) |
 
 ---
 
@@ -63,12 +63,34 @@ delete 108.913 — bahan laporan.
 
 ## 3. Cara menyalakan ulang (dari nol, 1 perintah)
 
+> **Prasyarat:** Docker Desktop terpasang dan **sedang menyala** (icon di tray tidak
+> berkedip). Kalau `docker` menjawab `failed to connect to the docker API … dockerDesktopLinuxEngine`,
+> artinya Docker Desktop belum jalan — bukan masalah repo. Tunggu sampai engine siap
+> (~1–3 menit setelah dibuka).
+
 ```bash
 cd D:/Projects/tamper-proof-siem-dapp
 git checkout main && git pull origin main
 cp .env.example .env                      # profil lokal tidak perlu diisi
-docker compose --profile local up -d --build
+docker compose --profile local up -d
 ```
+
+**Jangan tambah `--build`.** Registry Docker Hub tidak bisa dihubungi dari host ini
+(`registry-1.docker.io` timeout) sehingga build selalu gagal di tahap load metadata.
+Image `siem-app:local` / `siem-dashboard:local` / `mongo:7` sudah tersedia di lokal dan
+dipakai langsung oleh `up -d`. Kalau kode berubah dan memang perlu build, akses registry
+harus dibereskan dulu.
+
+**Jalan pintas Windows (1 klik, hasil sama):** jalankan dari
+`D:\Projects\tamper-proof-siem-dapp`
+
+| File (klik dua kali) | Isi |
+|---|---|
+| `jalankan-dashboard-sepolia.bat` | `up -d` stack, lalu mengarahkan **dashboard ke kontrak v4.0 Sepolia** (`0x08129667…6e9`) |
+| `matikan-stack.bat` | `docker compose down` **tanpa** menghapus data (chain, MongoDB, batch log tetap tersimpan) |
+
+Dashboard mode Sepolia memakai override [`docker-compose.sepolia.yml`](docker-compose.sepolia.yml);
+mode chain lokal cukup profil `local` tanpa override.
 
 | Layanan | Alamat |
 |---|---|
@@ -121,7 +143,8 @@ Urut prioritas. Tanda 🔑 = hanya bisa dikerjakan Vincent (butuh MetaMask/key s
    `0x4d3a6c7b…`, `getAssetCount` balik `0`, `getAsset('ASSET-001')` revert `AssetNotFound`.
 4. Opsional: verifikasi kontrak di Etherscan (belum di-verify — tombolnya masih
    tersedia di halaman kontrak) · deploy ke Amoy (`deployments.json`
-   slot `80002` masih kosong) · uji profil **Sepolia** pada `docker compose`.
+   slot `80002` masih kosong). ✅ Mode **Sepolia** pada dashboard sudah ada
+   (PR #16: `docker-compose.sepolia.yml` + `jalankan-dashboard-sepolia.bat`).
 5. Bukan bagian brief dApp, tapi jobdesk tim: skrip/skenario red team **Michael (#4)**
    dan laporan audit + CVSS **Nat (#6)** belum ada artefaknya di repo.
 6. **Form pengumpulan belum keluar.** Begitu dikasih, cek formatnya (zip? link repo?
@@ -142,6 +165,11 @@ Urut prioritas. Tanda 🔑 = hanya bisa dikerjakan Vincent (butuh MetaMask/key s
   (cek `eth_getCode`; kalau kontrak lama hilang ia deploy ulang dan menulis ulang `/state`).
 - **Port host yang dipakai:** 8088 (dashboard), 8089 (API), 8545 (chain), 2222 (SSH korban).
   Kalau `up` gagal karena port terpakai, cari proses lamanya dulu (mis. `python -m http.server`).
+- **Docker Desktop harus menyala lebih dulu.** Gejala kalau belum: semua perintah `docker`
+  gagal dengan `failed to connect to the docker API at npipe:…dockerDesktopLinuxEngine`.
+  Engine butuh ~1–3 menit setelah Docker Desktop dibuka.
+- **Jangan pakai `up -d --build`.** `registry-1.docker.io` tidak terjangkau dari host ini,
+  jadi build selalu berhenti di tahap load metadata. Pakai `up -d` biasa (image lokal sudah ada).
 - **`.sh` wajib LF.** CRLF bikin shebang gagal di dalam container; CI menolaknya.
 - **`main` dilindungi ruleset** → semua perubahan lewat branch + PR. `gh` belum login;
   buka/merge PR memakai token dari `git credential fill` lalu GitHub REST API
@@ -162,6 +190,9 @@ Urut prioritas. Tanda 🔑 = hanya bisa dikerjakan Vincent (butuh MetaMask/key s
 | `9693d4f` (PR #12) | `STATUS.md` (dokumen ini) |
 | `fce914f` (PR #13) | **v4.0**: registry aset (CRUD on-chain) + API off-chain + login wallet |
 | `29e18c7` | CI: cek drift hanya untuk ABI |
+| `e3bf713`, `ff394a9` (PR #14) | `STATUS.md` jadi checkpoint "titik lanjut" |
+| `b929897` (PR #15) | dokumen: kontrak v4.0 LIVE di Sepolia — alamat baru, role, bukti CRUD testnet |
+| `d39b3f7` (PR #16) | skrip pintasan `jalankan-dashboard-sepolia.bat` / `matikan-stack.bat` + override dashboard mode Sepolia |
 
 Kontrak **tidak berubah** sejak v4.0.0 kecuali kalau ada perbaikan baru — kalau
 mengubah `.sol`, jalankan `npm run export-abi` (ABI dicek CI) dan naikkan `VERSION`.
