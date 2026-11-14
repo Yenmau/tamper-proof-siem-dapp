@@ -196,7 +196,10 @@ export default function App() {
         config={config}
         onLogin={onLogin}
         onSkip={() => {
-          setSession({ mode: "readonly", addr: null, role: "PUBLIK", read: null, write: null, signer: null });
+          // Registry aset tetap bisa dibaca tanpa login: pakai koneksi hanya-baca yang
+          // sudah dibuat di useEffect di atas. Kalau `read` null, tabel aset selalu
+          // tampil "0 aset" padahal datanya ada on-chain.
+          setSession({ mode: "readonly", addr: null, role: "PUBLIK", read: contract, write: null, signer: null });
           pushEvent("info", "masuk tanpa login (hanya-baca)");
         }}
         notice={error || undefined}
