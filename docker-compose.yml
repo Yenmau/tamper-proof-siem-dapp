@@ -1,19 +1,3 @@
-# Stack gabungan Tamper-Proof SIEM: chain + deploy + server korban + collector + dashboard.
-#
-# Profil LOKAL (default, semua di dalam Docker):
-#   docker compose --profile local up -d --build
-#   → chain Hardhat 127.0.0.1:8545, kontrak auto-deploy, SSH korban 127.0.0.1:2222,
-#     dashboard http://127.0.0.1:8088, API off-chain 127.0.0.1:8089
-#
-# Sejak v4.0 stack ini juga menyalakan MongoDB + API off-chain (data user,
-# CRUD penuh) — lihat integration/backend/api/README.md.
-#
-# Profil SEPOLIA (pakai kontrak yang sudah live, tanpa chain lokal):
-#   isi RPC_URL, CONTRACT_ADDRESS, PRIVATE_KEY di .env lalu
-#   docker compose up -d --build
-#
-# Service `chain` dan `deploy` hanya jalan di profil local.
-
 name: tamper-proof-siem
 
 x-app-env: &app-env
@@ -22,7 +6,6 @@ x-app-env: &app-env
   PRIVATE_KEY: ${PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
 
 services:
-  # ---------------------------------------------------------------- chain lokal
   chain:
     profiles: ["local"]
     build:
@@ -45,7 +28,6 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # deploy kontrak sekali, lalu simpan alamatnya di volume /state
   deploy:
     profiles: ["local"]
     build:
@@ -64,7 +46,6 @@ services:
       - siem-state:/state
     restart: "no"
 
-  # ------------------------------------------------------- server korban (#3)
   victim-server:
     build: ./infra/victim-server
     container_name: siem-victim
@@ -87,7 +68,6 @@ services:
       retries: 3
       start_period: 10s
 
-  # ------------------------------------------------- backend otomatis (#2)
   collector:
     build:
       context: .
@@ -98,9 +78,6 @@ services:
     depends_on:
       victim-server:
         condition: service_healthy
-      # Sama seperti dashboard: tunggu alamat kontrak di /state sudah final
-      # (service `deploy` men-deploy ulang kalau chain-nya baru). Di profil
-      # Sepolia service `deploy` tidak aktif -> diabaikan.
       deploy:
         condition: service_completed_successfully
         required: false
@@ -116,7 +93,6 @@ services:
       - ./infra/siem-batches:/data/batches
     restart: unless-stopped
 
-  # ------------------------------------------- database OFF-CHAIN (MongoDB)
   mongo:
     image: mongo:7
     container_name: siem-mongo
@@ -130,7 +106,6 @@ services:
       retries: 10
       start_period: 10s
 
-  # ----------------------------------- API OFF-CHAIN / data user (MongoDB)
   api:
     build:
       context: .
@@ -155,7 +130,6 @@ services:
       - "127.0.0.1:${API_PORT:-8089}:8089"
     restart: unless-stopped
 
-  # ------------------------------------------------------ SOC Dashboard (#5)
   dashboard:
     build: ./integration/frontend
     image: siem-dashboard:local
@@ -163,23 +137,14 @@ services:
     depends_on:
       victim-server:
         condition: service_healthy
-      # Tunggu service `deploy` selesai supaya /state/contract-address.txt sudah
-      # ada saat config.json ditulis. `required: false` -> di profil Sepolia
-      # (tanpa chain lokal) service `deploy` tidak aktif dan baris ini diabaikan.
       deploy:
         condition: service_completed_successfully
         required: false
     ports:
       - "127.0.0.1:${DASHBOARD_PORT:-8088}:80"
     environment:
-      # Browser memanggil RPC ini langsung, jadi alamatnya harus bisa diakses
-      # dari HOST — bukan nama service docker (`chain`). Untuk profil lokal
-      # chain dipublikasikan di 127.0.0.1:8545; untuk Sepolia isi
-      # BROWSER_RPC_URL sama dengan RPC_URL di .env.
       RPC_URL: ${BROWSER_RPC_URL:-http://127.0.0.1:8545}
       CONTRACT_ADDRESS: ${CONTRACT_ADDRESS:-}
-      # API off-chain juga dipanggil dari browser host, jadi pakai URL yang
-      # bisa diakses host (bukan nama service docker `api`).
       API_BASE_URL: ${BROWSER_API_URL:-http://127.0.0.1:8089}
       CHAIN_ID: ${CHAIN_ID:-31337}
       NETWORK_NAME: ${NETWORK_NAME:-Hardhat lokal}
@@ -193,3 +158,4 @@ volumes:
   siem-state:
   victim-logs:
   siem-mongo:
+

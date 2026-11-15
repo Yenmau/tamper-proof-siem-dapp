@@ -1,5 +1,3 @@
-// Verifikasi end-to-end registri aset ON-CHAIN ke chain lokal yang sedang jalan.
-// Bukti nyata: create/view/update/delete + RBAC 3 role, langsung dari kontrak.
 const { ethers } = require("ethers");
 const fs = require("fs");
 const path = require("path");
@@ -11,7 +9,7 @@ const ABI = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "contracts", "
 (async () => {
   const provider = new ethers.JsonRpcProvider(RPC);
   const addr = ADDR_ENV || fs.readFileSync("/state/contract-address.txt", "utf8").trim();
-  const admin = await provider.getSigner(0); // akun deployer = ADMIN
+  const admin = await provider.getSigner(0);
   const analyst = await provider.getSigner(1);
   const auditor = await provider.getSigner(2);
   const outsider = await provider.getSigner(5);
@@ -23,7 +21,6 @@ const ABI = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "contracts", "
   console.log("VERSION() :", await c.VERSION());
   console.log("chainId   :", (await provider.getNetwork()).chainId.toString());
 
-  // siapkan role (owner otomatis ADMIN) — idempoten: hanya kalau masih NONE
   for (const [signer, fn, target] of [
     [analyst, "addAnalyst", "SOC_ANALYST"],
     [auditor, "addAuditor", "AUDITOR"],
@@ -43,48 +40,41 @@ const ABI = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "contracts", "
   const id = "ASSET-VERIFY-001";
   const cab = c.connect(analyst);
 
-  // INSERT
   let rc = await (await cab.createAsset(id, "Server Dell R740", "hardware", "Rack A1")).wait();
   console.log(`\n[INSERT] createAsset  gas=${rc.gasUsed}  count=${await c.getAssetCount()}`);
-  // VIEW
   let a = await c.getAsset(id);
   console.log(`[VIEW]   getAsset -> name=${a.name} | cat=${a.category} | loc=${a.location} | createdBy=${a.createdBy}`);
-  // UPDATE
   rc = await (await cab.updateAsset(id, "Server Dell R740 (upgraded)", "hardware", "Rack B2")).wait();
   a = await c.getAsset(id);
   console.log(`[UPDATE] updateAsset gas=${rc.gasUsed} -> name=${a.name} | loc=${a.location} | updatedBy=${a.updatedBy}`);
 
-  // DELETE oleh SOC_ANALYST harus GAGAL (RBAC)
   try {
     await (await cab.deleteAsset(id)).wait();
-    console.log("[RBAC]   ❌ SOC_ANALYST berhasil delete (harusnya gagal)");
+    console.log("[RBAC]   [GAGAL] SOC_ANALYST berhasil delete (harusnya gagal)");
   } catch (e) {
-    console.log("[RBAC]   ✅ SOC_ANALYST ditolak delete:", (e.shortMessage || e.message).slice(0, 60));
+    console.log("[RBAC]   [OK] SOC_ANALYST ditolak delete:", (e.shortMessage || e.message).slice(0, 60));
   }
-  // DELETE oleh AUDITOR harus GAGAL
   try {
     await (await c.connect(auditor).deleteAsset(id)).wait();
-    console.log("[RBAC]   ❌ AUDITOR berhasil delete (harusnya gagal)");
+    console.log("[RBAC]   [GAGAL] AUDITOR berhasil delete (harusnya gagal)");
   } catch (e) {
-    console.log("[RBAC]   ✅ AUDITOR ditolak delete");
+    console.log("[RBAC]   [OK] AUDITOR ditolak delete");
   }
-  // UPDATE oleh AUDITOR/outsider harus GAGAL
   for (const [nama, s] of [["AUDITOR", auditor], ["OUTSIDER", outsider]]) {
     try {
       await (await c.connect(s).updateAsset(id, "x", "y", "z")).wait();
-      console.log(`[RBAC]   ❌ ${nama} berhasil update (harusnya gagal)`);
+      console.log(`[RBAC]   [GAGAL] ${nama} berhasil update (harusnya gagal)`);
     } catch (e) {
-      console.log(`[RBAC]   ✅ ${nama} ditolak update`);
+      console.log(`[RBAC]   [OK] ${nama} ditolak update`);
     }
   }
 
-  // DELETE oleh ADMIN harus BERHASIL
   rc = await (await cAdmin.deleteAsset(id)).wait();
   console.log(`[DELETE] deleteAsset  gas=${rc.gasUsed} -> count=${await c.getAssetCount()}`);
   try {
     await c.getAsset(id);
-    console.log("[DELETE] ❌ data masih ada");
+    console.log("[DELETE] [GAGAL] data masih ada");
   } catch (e) {
-    console.log("[DELETE] ✅ data benar-benar hilang (getAsset revert:", (e.shortMessage || e.message).slice(0, 40) + ")");
+    console.log("[DELETE] [OK] data benar-benar hilang (getAsset revert:", (e.shortMessage || e.message).slice(0, 40) + ")");
   }
 })().catch((e) => { console.error("GAGAL:", e); process.exit(1); });

@@ -1,41 +1,4 @@
 #!/usr/bin/env node
-/**
- * merkleCollector.js — Backend Log Collector (mode: Merkle Tree)
- * ------------------------------------------------------------------
- * File log dipecah baris demi baris, tiap baris di-hash SHA-256 sebagai leaf,
- * lalu **Merkle Root**-nya dikunci on-chain (nilai yang dikirim sebagai
- * `logHash`). Baris mentahnya boleh disimpan di MongoDB supaya bisa
- * ditunjukkan **baris mana** yang berubah.
- *
- * MongoDB OPSIONAL. Kalau MONGO_URI kosong (default di .env.example) atau
- * dijalankan dengan flag `--no-db`, skrip tetap jalan: yang hilang hanya
- * penyimpanan off-chain + perbandingan baris demi baris.
- *
- * ---------------------------------------------------------------------------
- * CARA PAKAI
- * ---------------------------------------------------------------------------
- *   node merkleCollector.js record <fileLog> <logId>
- *   node merkleCollector.js watch  <fileLog> <logId> [intervalDetik] [maxIterasi]
- *   node merkleCollector.js prove  <fileLog> <logId> [indexBaris]
- *   node merkleCollector.js batch  <manifest.txt>
- *
- * `record` menyimpan Merkle Root on-chain PLUS bukti per baris
- * (`<fileLog>.<logId>.proofs.json`). `prove` membuktikan baris ke-i masih
- * identik dengan yang direkam — verifikasi Merkle proof terhadap Merkle Root
- * on-chain, hanya-baca (tanpa PRIVATE_KEY). `batch` = banyak logId dalam satu
- * transaksi (recordLogHashBatch).
- *
- * [intervalDetik] default 5 · [maxIterasi] default 0 (jalan terus).
- * Tambahkan `--no-db` untuk memaksa tanpa MongoDB.
- *
- * ---------------------------------------------------------------------------
- * CATATAN PENTING
- * ---------------------------------------------------------------------------
- * Nilai yang dikirim sebagai `logHash` BERBEDA dengan logCollector.js
- * (Merkle Root vs SHA-256 file utuh). Satu `logId` hanya boleh dikelola satu
- * skrip — kalau tertukar, skrip ini akan melaporkan "SALAH SKRIP" dan tidak
- * mengirim alarm palsu (lihat core.detectModeMismatch).
- */
 
 const path = require("path");
 const fs = require("fs");
@@ -46,9 +9,6 @@ const MODE = core.MODE_MERKLE;
 const MONGO_URI = core.MONGO_URI;
 const USE_DB = MONGO_URI !== "" && !process.argv.includes("--no-db");
 
-// ---------------------------------------------------------------------------
-// Skema MongoDB (hanya dipakai kalau USE_DB)
-// ---------------------------------------------------------------------------
 const logSchema = new mongoose.Schema({
   logId: { type: String, required: true, unique: true },
   merkleRoot: { type: String, required: true },
@@ -58,8 +18,6 @@ const logSchema = new mongoose.Schema({
       index: Number,
       content: String,
       hash: String,
-      // Jalur sibling hash untuk baris ini (Merkle proof). Bukti ini bisa
-      // diverifikasi ulang terhadap Merkle Root ON-CHAIN tanpa mempercayai DB.
       proof: [String],
     },
   ],
@@ -71,7 +29,7 @@ async function connectMongo() {
   if (!USE_DB) return false;
   try {
     await mongoose.connect(MONGO_URI);
-    console.log("✅ Terhubung ke MongoDB:", MONGO_URI);
+    console.log("[OK] Terhubung ke MongoDB:", MONGO_URI);
     return true;
   } catch (err) {
     core.die(
@@ -81,17 +39,13 @@ async function connectMongo() {
   }
 }
 
-/**
- * Versi "jangan mati" untuk mode hanya-baca (`prove`): kalau Mongo tidak bisa
- * dipakai, verifikasi tetap lanjut memakai file bukti `<fileLog>.proofs.json`.
- */
 async function tryFindInMongo(logId) {
   if (!USE_DB) return null;
   try {
     await mongoose.connect(MONGO_URI);
     return await LogModel.findOne({ logId });
   } catch (err) {
-    console.log("ℹ️  MongoDB tidak bisa dipakai (" + err.message + ") — lanjut dengan file bukti.");
+    console.log("ℹ MongoDB tidak bisa dipakai (" + err.message + ") — lanjut dengan file bukti.");
     return null;
   }
 }
@@ -102,9 +56,6 @@ async function closeMongo() {
 
 const dbLabel = () => (USE_DB ? "aktif (" + MONGO_URI + ")" : "nonaktif — tanpa penyimpanan off-chain / diff per baris");
 
-// ---------------------------------------------------------------------------
-// Mode: record
-// ---------------------------------------------------------------------------
 async function cmdRecord(logFile, logId) {
   const { provider, wallet, contract } = await core.connect();
   const info = core.hashForMode(MODE, logFile);
@@ -128,8 +79,6 @@ async function cmdRecord(logFile, logId) {
     ["MongoDB", dbLabel()],
   ]);
 
-  // Bukti per baris dibangun dari file yang MASIH ASLI, lalu diverifikasi ulang
-  // satu per satu terhadap root-nya sendiri sebelum apa pun dikirim ke jaringan.
   const artifacts = core.buildProofArtifacts(info.lines, logId, info.hash);
   const broken = artifacts.lines.filter((l) => !core.verifyLineProof(l.content, l.proof, artifacts.merkleRoot));
   if (broken.length > 0) {
@@ -138,7 +87,7 @@ async function cmdRecord(logFile, logId) {
     );
   }
   const sidecar = core.saveProofArtifacts(logFile, artifacts);
-  console.log("✅ Bukti Merkle per baris disimpan: " + sidecar + " (" + artifacts.lineCount + " baris, " + broken.length + " gagal-verifikasi)");
+  console.log("[OK] Bukti Merkle per baris disimpan: " + sidecar + " (" + artifacts.lineCount + " baris, " + broken.length + " gagal-verifikasi)");
 
   if (USE_DB) {
     try {
@@ -150,23 +99,23 @@ async function cmdRecord(logFile, logId) {
         algorithm: artifacts.algorithm,
         lines: artifacts.lines.map((l) => ({ index: l.index, content: l.content, hash: l.hash, proof: l.proof })),
       });
-      console.log("✅ Baris log + bukti Merkle tersimpan di MongoDB.");
+      console.log("[OK] Baris log + bukti Merkle tersimpan di MongoDB.");
     } catch (err) {
       core.die("Error MongoDB: " + err.message);
     }
   } else {
-    console.log("ℹ️  Tanpa MongoDB: baris log tidak disimpan off-chain (diff per baris tidak akan tersedia).");
+    console.log("ℹ Tanpa MongoDB: baris log tidak disimpan off-chain (diff per baris tidak akan tersedia).");
   }
 
   try {
     const tx = await contract.recordLogHash(logId, info.hash);
     console.log("⏳ transaksi terkirim:", tx.hash);
     const rc = await tx.wait();
-    console.log("✅ Merkle Root terkunci on-chain. gas:", rc.gasUsed.toString());
+    console.log("[OK] Merkle Root terkunci on-chain. gas:", rc.gasUsed.toString());
     const link = core.explorerLink(tx.hash);
     if (link) console.log("   " + link);
   } catch (err) {
-    console.error("❌ Transaksi gagal:", core.explainError(contract, err));
+    console.error("[GAGAL] Transaksi gagal:", core.explainError(contract, err));
     await closeMongo();
     process.exitCode = 1;
     return;
@@ -175,7 +124,6 @@ async function cmdRecord(logFile, logId) {
   await closeMongo();
 }
 
-/** Tampilkan baris mana yang DIUBAH/DITAMBAH/DIHAPUS, dari salinan di MongoDB. */
 async function printLineDiff(logId, lines) {
   if (!USE_DB) {
     console.log("   (laporan per baris butuh MongoDB — jalankan dengan MONGO_URI terisi)");
@@ -208,9 +156,6 @@ async function printLineDiff(logId, lines) {
   if (shown === 0) console.log("   (tidak ada baris yang berbeda dari salinan MongoDB)");
 }
 
-// ---------------------------------------------------------------------------
-// Mode: watch
-// ---------------------------------------------------------------------------
 async function cmdWatch(logFile, logId, intervalSec, maxIter) {
   const { provider, wallet, contract } = await core.connect();
   await provider.getNetwork();
@@ -235,20 +180,17 @@ async function cmdWatch(logFile, logId, intervalSec, maxIter) {
     const info = core.hashForMode(MODE, logFile);
     const stamp = new Date().toLocaleTimeString("id-ID");
 
-    // File hilang / tanpa baris: langsung dianggap tampering (truncate log =
-    // alat paling umum untuk menghapus jejak). Tidak perlu tanya kontrak.
     if (info.missing || info.empty) {
       tamperCount++;
       if (info.missing) {
-        console.log(`[${stamp}] #${iteration} 🔴 FILE LOG HILANG! ${logFile} tidak ada di server`);
+        console.log(`[${stamp}] #${iteration} FILE LOG HILANG! ${logFile} tidak ada di server`);
       } else {
-        console.log(`[${stamp}] #${iteration} 🔴 FILE LOG KOSONG! ${logFile} ada tapi 0 baris berisi`);
+        console.log(`[${stamp}] #${iteration} FILE LOG KOSONG! ${logFile} ada tapi 0 baris berisi`);
       }
       console.log(`            → mengirim ${info.hash} sebagai bukti dan memicu alarm on-chain…`);
       return sendAlarm(info.hash);
     }
 
-    // Cek GRATIS dulu (view, 0 gas)
     let isMatch;
     try {
       isMatch = await contract.verifyLogIntegrityView(logId, info.hash);
@@ -257,22 +199,21 @@ async function cmdWatch(logFile, logId, intervalSec, maxIter) {
     }
 
     if (isMatch) {
-      console.log(`[${stamp}] #${iteration} 🟢 AMAN     Merkle Root cocok (${core.short(info.hash)})`);
+      console.log(`[${stamp}] #${iteration} AMAN     Merkle Root cocok (${core.short(info.hash)})`);
       return;
     }
 
-    // Bukan tampering, tapi logId ini dikelola skrip mode lain?
     const mismatch = await core.detectModeMismatch(contract, logId, logFile, MODE);
     if (mismatch) {
-      console.log(`[${stamp}] #${iteration} ⚠️  SALAH SKRIP — logId ini direkam dengan mode "${mismatch.otherMode}"`);
+      console.log(`[${stamp}] #${iteration} [!] SALAH SKRIP — logId ini direkam dengan mode "${mismatch.otherMode}"`);
       console.log("            hash on-chain cocok dengan hasil hitung mode itu, jadi isi file TIDAK berubah.");
       console.log("            Alarm tidak dikirim. Pakai skrip logCollector.js untuk logId ini.");
       return;
     }
 
     tamperCount++;
-    console.log(`[${stamp}] #${iteration} 🔴 TAMPERED! Merkle Root server ${core.short(info.hash)} ≠ on-chain`);
-    console.log("   🔍 Membandingkan baris log dengan salinan off-chain…");
+    console.log(`[${stamp}] #${iteration} TAMPERED! Merkle Root server ${core.short(info.hash)} ≠ on-chain`);
+    console.log("   Membandingkan baris log dengan salinan off-chain…");
     await printLineDiff(logId, info.lines);
     await sendAlarm(info.hash);
   };
@@ -285,21 +226,20 @@ async function cmdWatch(logFile, logId, intervalSec, maxIter) {
         try {
           const parsed = contract.interface.parseLog(log);
           if (parsed && parsed.name === "TamperingDetected") {
-            console.log("            ⚠️  event TamperingDetected dipancarkan:");
+            console.log("            [!] event TamperingDetected dipancarkan:");
             console.log("                logId       :", parsed.args[0]);
             console.log("                hash ASLI   :", parsed.args[1]);
             console.log("                hash SERVER :", parsed.args[2]);
           }
         } catch (_) {
-          /* log dari kontrak lain, abaikan */
         }
       }
-      console.log("            ✅ alarm tercatat on-chain (gas " + rc.gasUsed.toString() + ")");
+      console.log("            [OK] alarm tercatat on-chain (gas " + rc.gasUsed.toString() + ")");
       const link = core.explorerLink(tx.hash);
       if (link) console.log("               " + link);
       console.log("            → dashboard SOC (Joseph) menerima event ini real-time.");
     } catch (err) {
-      console.error("            ❌ gagal mengirim transaksi:", core.explainError(contract, err));
+      console.error("            [GAGAL] gagal mengirim transaksi:", core.explainError(contract, err));
     }
   };
 
@@ -322,16 +262,6 @@ async function cmdWatch(logFile, logId, intervalSec, maxIter) {
   }, intervalSec * 1000);
 }
 
-// ---------------------------------------------------------------------------
-// Mode: prove — bukti kriptografis per baris terhadap Merkle Root ON-CHAIN
-// ---------------------------------------------------------------------------
-/**
- * Menjawab pertanyaan: "benarkah baris ke-i file ini persis seperti yang direkam
- * saat itu?" — dengan Merkle proof, bukan dengan membandingkan teks ke salinan
- * DB yang bisa ditulis ulang penyerang.
- *
- * TIDAK butuh private key (hanya-baca): auditor pun bisa menjalankannya.
- */
 async function cmdProve(logFile, logId, indexArg) {
   const { provider, contract } = await core.connectReadOnly();
   const net = await provider.getNetwork();
@@ -342,7 +272,6 @@ async function cmdProve(logFile, logId, indexArg) {
   }
   const onChainRoot = entry.logHash;
 
-  // Sumber bukti: Mongo (kalau bisa) -> file `<fileLog>.proofs.json`.
   const dbDoc = await tryFindInMongo(logId);
   const artifacts = core.loadProofArtifacts(logFile, logId, dbDoc);
   if (!artifacts) {
@@ -365,12 +294,12 @@ async function cmdProve(logFile, logId, indexArg) {
   ]);
 
   if (!sinkron) {
-    console.log("⚠️  Merkle Root di artefak (" + core.short(artifacts.merkleRoot) + ") ≠ root on-chain.");
+    console.log("[!] Merkle Root di artefak (" + core.short(artifacts.merkleRoot) + ") ≠ root on-chain.");
     console.log("    Artefak ini BUKAN set baris yang direkam on-chain — hasil di bawah tidak bisa dipakai sebagai bukti.");
     console.log("    (Bisa jadi file log sudah di-record ulang dengan logId/root berbeda.)\n");
   }
 
-  const linesNow = core.readLogLines(logFile); // null kalau file hilang
+  const linesNow = core.readLogLines(logFile);
   const wanted = indexArg === undefined || indexArg === "" ? artifacts.lines.map((l) => l.index) : [Number(indexArg)];
   if (wanted.some((i) => !Number.isInteger(i) || i < 0)) core.die("Index baris harus angka >= 0.");
 
@@ -380,27 +309,27 @@ async function cmdProve(logFile, logId, indexArg) {
   for (const idx of wanted) {
     const rec = artifacts.lines.find((l) => l.index === idx);
     if (!rec) {
-      console.log(`  ⚠️  baris ke-${idx}: tidak ada di artefak bukti (di luar ${artifacts.lineCount} baris yang direkam)`);
+      console.log(`  [!] baris ke-${idx}: tidak ada di artefak bukti (di luar ${artifacts.lineCount} baris yang direkam)`);
       continue;
     }
     if (!linesNow) {
       failed++;
-      console.log(`  🔴 baris ke-${idx}: TIDAK TERBUKTI — file log ${logFile} sudah tidak ada di server`);
+      console.log(`  baris ke-${idx}: TIDAK TERBUKTI — file log ${logFile} sudah tidak ada di server`);
       continue;
     }
     const now = linesNow[idx];
     if (now === undefined) {
       failed++;
-      console.log(`  🔴 baris ke-${idx}: TIDAK TERBUKTI — baris sudah tidak ada (file dipotong/dihapus)`);
+      console.log(`  baris ke-${idx}: TIDAK TERBUKTI — baris sudah tidak ada (file dipotong/dihapus)`);
       console.log(`        asli : ${rec.content}`);
       continue;
     }
     if (core.verifyLineProof(now, rec.proof, onChainRoot)) {
       proven++;
-      console.log(`  ✅ baris ke-${idx}: TERBUKTI identik (${rec.proof.length} sibling hash, root cocok)`);
+      console.log(`  [OK] baris ke-${idx}: TERBUKTI identik (${rec.proof.length} sibling hash, root cocok)`);
     } else {
       failed++;
-      console.log(`  🔴 baris ke-${idx}: TIDAK TERBUKTI — isi baris berubah (proof tidak menghasilkan root on-chain)`);
+      console.log(`  baris ke-${idx}: TIDAK TERBUKTI — isi baris berubah (proof tidak menghasilkan root on-chain)`);
       console.log(`        asli : ${rec.content}`);
       console.log(`        baru : ${now}`);
     }
@@ -417,9 +346,6 @@ async function cmdProve(logFile, logId, indexArg) {
   await closeMongo();
 }
 
-// ---------------------------------------------------------------------------
-// Mode: batch — banyak logId dalam SATU transaksi (recordLogHashBatch)
-// ---------------------------------------------------------------------------
 async function cmdBatch(manifestPath) {
   if (!fs.existsSync(manifestPath)) core.die("Manifest tidak ditemukan: " + manifestPath);
   const entries = core.parseManifest(fs.readFileSync(manifestPath, "utf8"));
@@ -429,8 +355,6 @@ async function cmdBatch(manifestPath) {
 
   const { ok, bad } = core.prepareBatchEntries(MODE, entries);
 
-  // Skrining GRATIS (view): logId yang sudah terdaftar tidak boleh ikut dikirim —
-  // kontrak memakai revert all-or-nothing, satu logId lama menggagalkan semua.
   const sudahAda = [];
   const akanKirim = [];
   for (const e of ok) {
@@ -449,8 +373,8 @@ async function cmdBatch(manifestPath) {
   ]);
 
   for (const e of akanKirim) console.log("  • " + e.logId + "  " + e.detail + "  " + core.short(e.hash));
-  for (const e of sudahAda) console.log("  ⏭️  DILEWATI (sudah terdaftar on-chain): " + e.logId);
-  for (const e of bad) console.log("  ⚠️  DILEWATI (" + e.reason + "): " + e.logId + " → " + e.file);
+  for (const e of sudahAda) console.log("  ⏭ DILEWATI (sudah terdaftar on-chain): " + e.logId);
+  for (const e of bad) console.log("  [!] DILEWATI (" + e.reason + "): " + e.logId + " → " + e.file);
 
   if (akanKirim.length === 0) {
     console.log("Tidak ada entri yang perlu dikirim. Selesai.");
@@ -458,7 +382,6 @@ async function cmdBatch(manifestPath) {
     return;
   }
 
-  // Artefak bukti disiapkan lebih dulu (dari file yang masih asli), lalu diverifikasi ulang.
   const artifactsList = akanKirim.map((e) => core.buildProofArtifacts(e.lines, e.logId, e.hash));
   for (const a of artifactsList) {
     const rusak = a.lines.filter((l) => !core.verifyLineProof(l.content, l.proof, a.merkleRoot)).length;
@@ -469,7 +392,7 @@ async function cmdBatch(manifestPath) {
   for (const a of artifactsList) {
     const logFile = akanKirim.find((e) => e.logId === a.logId).file;
     const sidecar = core.saveProofArtifacts(logFile, a);
-    console.log("✅ Bukti per baris: " + sidecar + " (" + a.lineCount + " baris)");
+    console.log("[OK] Bukti per baris: " + sidecar + " (" + a.lineCount + " baris)");
     if (USE_DB) {
       try {
         await LogModel.create({
@@ -492,24 +415,20 @@ async function cmdBatch(manifestPath) {
     console.log("⏳ transaksi batch terkirim:", tx.hash);
     const rc = await tx.wait();
     const gas = BigInt(rc.gasUsed.toString());
-    console.log("✅ " + akanKirim.length + " logId terkunci on-chain dalam 1 transaksi.");
+    console.log("[OK] " + akanKirim.length + " logId terkunci on-chain dalam 1 transaksi.");
     console.log("   gas total : " + gas.toString());
     console.log("   per log   : " + (gas / BigInt(akanKirim.length)).toString() + " gas");
     const link = core.explorerLink(tx.hash);
     if (link) console.log("   " + link);
   } catch (err) {
-    console.error("❌ Transaksi batch gagal:", core.explainError(contract, err));
+    console.error("[GAGAL] Transaksi batch gagal:", core.explainError(contract, err));
     process.exitCode = 1;
   }
 
   await closeMongo();
 }
 
-// ---------------------------------------------------------------------------
-// Entry point
-// ---------------------------------------------------------------------------
 async function main() {
-  // buang flag (mis. --no-db) supaya posisi argumen tetap
   const [mode, logFile, logId, intervalArg, maxIterArg] = process.argv
     .slice(2)
     .filter((a) => !a.startsWith("--"));

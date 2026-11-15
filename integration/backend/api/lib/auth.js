@@ -1,37 +1,14 @@
-// integration/backend/api/lib/auth.js
-//
-// AUTHENTICATION "login pakai wallet address" untuk sisi OFF-CHAIN.
-//
-// Kenapa perlu lapisan ini kalau kontrak sudah punya RBAC?
-// Karena endpoint API ini berjalan di luar blockchain: kalau siapa pun bisa
-// memanggil `POST /api/users`, aturan role on-chain jadi tidak ada artinya.
-// Jadi setiap permintaan tulis harus membuktikan dua hal:
-//
-//   1. Pemanggil benar-benar memegang private key dari alamat wallet itu
-//      -> tanda tangan EIP-191 (`personal_sign`) atas sebuah pesan.
-//   2. Alamat itu ber-role sesuai di KONTRAK (sumber kebenaran tetap on-chain)
-//      -> panggil `getRoleName(address)` lewat RPC.
-//
-// Pesan yang ditandatangani memuat timestamp + nonce, supaya tanda tangan lama
-// tidak bisa dipakai ulang (replay attack).
 
 const { ethers } = require("ethers");
 
-/** Batas umur tanda tangan (detik). */
 const MAX_AGE_SEC = 300;
 
-/** Matriks izin: tindakan -> role yang boleh (nama role on-chain). */
 const ACTION_ROLES = {
   read: ["ADMIN", "SOC_ANALYST", "AUDITOR"],
   write: ["ADMIN", "SOC_ANALYST"],
   delete: ["ADMIN"],
 };
 
-// ---------------------------------------------------------------------------
-// Bagian murni (tanpa jaringan) — diuji di test/api.test.js
-// ---------------------------------------------------------------------------
-
-/** Bangun pesan kanonik yang akan ditandatangani wallet. */
 function buildMessage({ wallet, ts, nonce }) {
   return [
     "SIEM Off-Chain API",
@@ -41,15 +18,10 @@ function buildMessage({ wallet, ts, nonce }) {
   ].join("\n");
 }
 
-/**
- * Pesan berisi baris baru, dan nilai HTTP header TIDAK boleh mengandung baris
- * baru -> pesan dikirim sebagai base64 di header `x-message`.
- */
 function encodeMessage(message) {
   return Buffer.from(String(message), "utf8").toString("base64");
 }
 
-/** Kebalikan dari encodeMessage. null kalau isinya bukan base64 pesan yang sah. */
 function decodeMessage(nilai) {
   if (typeof nilai !== "string" || nilai.length === 0) return null;
   try {
@@ -60,7 +32,6 @@ function decodeMessage(nilai) {
   }
 }
 
-/** Baca kembali isi pesan. Mengembalikan null kalau formatnya tidak dikenal. */
 function parseMessage(message) {
   if (typeof message !== "string") return null;
   const baris = message.split("\n").map((l) => l.trim());
@@ -78,21 +49,18 @@ function parseMessage(message) {
   return { wallet: wallet.toLowerCase(), ts: Number(ts), nonce };
 }
 
-/** Tanda tangan masih segar? (mencegah replay di kemudian hari) */
 function isFresh(ts, nowSec = Math.floor(Date.now() / 1000), maxAgeSec = MAX_AGE_SEC) {
   if (!Number.isFinite(ts)) return false;
   const umur = nowSec - ts;
-  return umur >= -30 && umur <= maxAgeSec; // toleransi 30 dtk untuk jam yang bergeser
+  return umur >= -30 && umur <= maxAgeSec;
 }
 
-/** Apakah `roleName` boleh melakukan `action`? */
 function roleAllows(action, roleName) {
   const boleh = ACTION_ROLES[action];
   if (!boleh) return false;
   return boleh.includes(String(roleName || "").toUpperCase());
 }
 
-/** Normalisasi alamat; mengembalikan null kalau bukan alamat yang sah. */
 function normalizeWallet(addr) {
   try {
     return ethers.getAddress(String(addr)).toLowerCase();
@@ -101,10 +69,6 @@ function normalizeWallet(addr) {
   }
 }
 
-/**
- * Verifikasi tanda tangan. Mengembalikan { ok, reason, wallet } — tidak melempar,
- * supaya pemanggilnya mudah diuji dan pesan errornya konsisten.
- */
 function verifySignature({ message, signature, wallet, nowSec }) {
   const parsed = parseMessage(message);
   if (!parsed) return { ok: false, reason: "format_pesan" };
@@ -128,12 +92,8 @@ function verifySignature({ message, signature, wallet, nowSec }) {
   return { ok: true, wallet: walletHeader, nonce: parsed.nonce, ts: parsed.ts };
 }
 
-// ---------------------------------------------------------------------------
-// Nonce store — sekali pakai, kedaluwarsa otomatis
-// ---------------------------------------------------------------------------
-
 function createNonceStore({ maxAgeSec = MAX_AGE_SEC } = {}) {
-  const dipakai = new Map(); // nonce -> ts
+  const dipakai = new Map();
 
   function bersihkan(nowSec = Math.floor(Date.now() / 1000)) {
     for (const [nonce, ts] of dipakai) {
@@ -142,7 +102,6 @@ function createNonceStore({ maxAgeSec = MAX_AGE_SEC } = {}) {
   }
 
   return {
-    /** true kalau nonce belum pernah dipakai (dan langsung menandainya terpakai). */
     pakai(nonce, ts) {
       bersihkan();
       if (dipakai.has(nonce)) return false;
@@ -153,18 +112,6 @@ function createNonceStore({ maxAgeSec = MAX_AGE_SEC } = {}) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Middleware Express
-// ---------------------------------------------------------------------------
-
-/**
- * Buat middleware yang mewajibkan tanda tangan wallet + role on-chain.
- *
- * @param {"read"|"write"|"delete"} action
- * @param {object} opsi
- * @param {(addr:string)=>Promise<string>} opsi.roleOf  pembaca role on-chain
- * @param {object} opsi.nonceStore
- */
 function requireWallet(action, { roleOf, nonceStore }) {
   return async function (req, res, next) {
     const wallet = req.get("x-wallet");

@@ -30,14 +30,6 @@ jobs:
       - name: Test unit backend + API off-chain (tanpa jaringan/MongoDB)
         run: npm run test:backend
 
-      # ABI yang di-commit harus cocok dengan hasil compile kontrak. Dulu file ini
-      # dibuat manual -> gampang lupa diperbarui setelah kontrak diubah, dan
-      # backend/frontend jadi memakai ABI basi.
-      #
-      # CATATAN: yang dibandingkan hanya ABI. Bytecode tidak dicek di sini karena
-      # beberapa byte terakhirnya adalah metadata (hash IPFS) yang ikut berubah
-      # bila line ending file sumber atau build compiler berbeda (Windows CRLF vs
-      # runner Linux LF) - bytecode.txt disimpan sebagai referensi build lokal.
       - name: ABI harus sinkron dengan kontrak
         run: |
           npm run export-abi
@@ -46,9 +38,6 @@ jobs:
             exit 1
           }
 
-      # Penjaga regresi: `.env.example` pernah rusak karena di-append oleh
-      # PowerShell (`>>` menulis UTF-16LE) sehingga jadi file binary dan
-      # variabelnya tidak terbaca. Kalau kembali terjadi, CI gagal di sini.
       - name: Cek encoding .env.example (harus teks UTF-8/ASCII)
         run: |
           ENC=$(file -b --mime-encoding integration/backend/.env.example)
@@ -115,3 +104,4 @@ jobs:
             docker compose --profile local config --services | grep -qx "$s" || {
               echo "::error::service '$s' hilang dari docker-compose.yml"; exit 1; }
           done
+

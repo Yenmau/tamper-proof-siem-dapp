@@ -1,7 +1,3 @@
-// Log shipper: tail LOG_FILE, potong jadi file BATCH tetap di BATCH_DIR.
-// Tiap batch = 1 file yang tidak diubah lagi, dengan logId sendiri.
-// Backend (merkleCollector.js) lalu `record` file itu ke blockchain dan
-// `watch` untuk mendeteksi perubahan.
 const fs = require('fs');
 const path = require('path');
 
@@ -16,9 +12,7 @@ let offset = 0, buffer = [], partial = '', seq = 0;
 
 function flush() {
   if (!buffer.length) return;
-  const ts = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, ''); // 20261107T120247
-  // Batch lama tidak boleh tertimpa: `seq` reset ke 0 setiap container restart,
-  // dan timestamp hanya sampai detik. Kalau nama sudah dipakai, naikkan seq.
+  const ts = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '');
   let name = `auth-${ts}-${String(seq++).padStart(3, '0')}`;
   let guard = 0;
   while (fs.existsSync(path.join(BATCH_DIR, name + '.log')) && guard++ < 10000) {
@@ -26,7 +20,6 @@ function flush() {
   }
   const file = path.join(BATCH_DIR, name + '.log');
   const tmp = file + '.tmp';
-  // tulis ke .tmp lalu rename: backend tidak pernah melihat file setengah jadi
   fs.writeFileSync(tmp, buffer.join('\n') + '\n');
   fs.renameSync(tmp, file);
   const logId = `${HOST}/${name}`;
@@ -38,7 +31,7 @@ function flush() {
 function poll() {
   if (!fs.existsSync(LOG_FILE)) return;
   const size = fs.statSync(LOG_FILE).size;
-  if (size < offset) {   // file mengecil = indikasi log wiping / truncate
+  if (size < offset) {
     console.warn('[shipper] ALERT: log file mengecil, kemungkinan tampering');
     buffer.push(`[SHIPPER-ALERT] ${LOG_FILE} truncated (${offset} -> ${size})`);
     offset = 0; partial = '';
@@ -56,9 +49,6 @@ function poll() {
 }
 
 fs.mkdirSync(BATCH_DIR, { recursive: true });
-// Mulai dari akhir file agar tidak membuat batch ulang dari log lama saat restart.
-// Konsekuensi: baris yang ditulis SEBELUM shipper sempat jalan (beberapa ratus ms
-// saat boot) tidak akan pernah dikirim — dicetak ke log supaya transparan.
 if (fs.existsSync(LOG_FILE)) {
   offset = fs.statSync(LOG_FILE).size;
   if (offset > 0) console.log(`[shipper] lewati ${offset} byte log lama, mulai dari offset akhir`);

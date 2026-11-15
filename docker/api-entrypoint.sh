@@ -1,7 +1,4 @@
 #!/bin/sh
-# Siapkan env API off-chain: alamat kontrak boleh datang dari env, kalau kosong
-# dibaca dari volume /state (hasil service `deploy`). Sama polanya dengan
-# collector-entrypoint.sh supaya tidak ada alamat yang disalin manual.
 set -e
 
 : "${STATE_DIR:=/state}"
@@ -34,3 +31,4 @@ export RPC_URL CONTRACT_ADDRESS PORT
 echo "[api] RPC=${RPC_URL} kontrak=${CONTRACT_ADDRESS} port=${PORT}"
 
 exec node /repo/integration/backend/api/server.js "$@"
+

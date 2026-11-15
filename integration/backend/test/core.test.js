@@ -1,13 +1,4 @@
 "use strict";
-/**
- * test/core.test.js — unit test untuk lib/collector-core.js
- * ------------------------------------------------------------------
- * Tidak butuh jaringan, kontrak, maupun MongoDB: semua yang diuji murni
- * perhitungan hash, penanganan file aneh (hilang / kosong), dan deteksi
- * "salah skrip" memakai stub kontrak.
- *
- * Jalankan: npm run test:backend
- */
 
 const assert = require("assert");
 const fs = require("fs");
@@ -26,9 +17,6 @@ fs.writeFileSync(EMPTY_FILE, "\n\n   \n\n");
 const tests = [];
 const t = (name, fn) => tests.push([name, fn]);
 
-// ---------------------------------------------------------------------------
-// Hash
-// ---------------------------------------------------------------------------
 t("mode file: cocok dengan SHA-256 manual seluruh isi file", () => {
   const manual = "0x" + crypto.createHash("sha256").update(fs.readFileSync(SAMPLE)).digest("hex");
   assert.strictEqual(core.hashForMode(core.MODE_FILE, SAMPLE).hash, manual);
@@ -53,9 +41,6 @@ t("dua mode menghasilkan hash BERBEDA untuk file yang identik (dasar alarm palsu
   assert.notStrictEqual(a, b);
 });
 
-// ---------------------------------------------------------------------------
-// File aneh: hilang & kosong  (regresi bug "root = 0x")
-// ---------------------------------------------------------------------------
 t("file hilang → penanda HASH_FILE_MISSING di kedua mode (bukan crash)", () => {
   assert.strictEqual(core.hashForMode(core.MODE_FILE, MISSING_FILE).hash, core.HASH_FILE_MISSING);
   assert.strictEqual(core.hashForMode(core.MODE_MERKLE, MISSING_FILE).hash, core.HASH_FILE_MISSING);
@@ -74,9 +59,6 @@ t("merkleRootOfLines([]) mengembalikan null, bukan '0x' (fallback palsu dihapus)
   assert.strictEqual(core.merkleRootOfLines(null), null);
 });
 
-// ---------------------------------------------------------------------------
-// Deteksi "salah skrip" (logId direkam mode lain)
-// ---------------------------------------------------------------------------
 t("log direkam mode FILE, dicek dengan mode MERKLE → terdeteksi, bukan dianggap tampering", async () => {
   const fileHash = core.hashForMode(core.MODE_FILE, SAMPLE).hash;
   const stub = { getLogStatus: async () => [fileHash, 0n, false] };
@@ -109,9 +91,6 @@ t("logId belum terdaftar (getLogStatus error) → null, tidak melempar", async (
   assert.strictEqual(await core.detectModeMismatch(stub, "belum#ada", SAMPLE, core.MODE_MERKLE), null);
 });
 
-// ---------------------------------------------------------------------------
-// Argumen CLI
-// ---------------------------------------------------------------------------
 t("argNumber: nilai kosong/0/NaN pakai default, nilai positif dipakai", () => {
   assert.strictEqual(core.argNumber(undefined, 5), 5);
   assert.strictEqual(core.argNumber("0", 5), 5);
@@ -119,9 +98,6 @@ t("argNumber: nilai kosong/0/NaN pakai default, nilai positif dipakai", () => {
   assert.strictEqual(core.argNumber("7", 5), 7);
 });
 
-// ---------------------------------------------------------------------------
-// Merkle proof per baris (bukti kriptografis, bukan banding teks)
-// ---------------------------------------------------------------------------
 const SAMPLE_LINES = fs.readFileSync(SAMPLE, "utf8").split(/\r?\n/).filter((l) => l.trim() !== "");
 
 t("proof: SETIAP baris file sampel bisa dibuktikan terhadap Merkle Root-nya", () => {
@@ -148,9 +124,7 @@ t("proof: baris LAIN tetap terbukti walau satu baris di file diubah (inti klaim 
   const iUbah = 1;
   diubah[iUbah] = "Oct 09 21:40:15 srv sshd[1025]: Failed password untuk root dari 10.0.0.66";
   assert.notStrictEqual(diubah[iUbah], SAMPLE_LINES[iUbah]);
-  // baris yang diubah: proof-nya tidak lagi menghasilkan Merkle Root on-chain
   assert.strictEqual(core.verifyLineProof(diubah[iUbah], core.merkleProofOfLine(SAMPLE_LINES, iUbah), root), false);
-  // baris lain tetap TERBUKTI identik — inilah yang tidak bisa dilakukan hash file utuh
   const lain = SAMPLE_LINES.map((_, i) => i).filter((i) => i !== iUbah);
   assert.ok(lain.length > 0, "sampel harus punya lebih dari 1 baris");
   for (const i of lain) {
@@ -184,9 +158,6 @@ t("leafHashHex: konsisten dengan sha256(isi baris)", () => {
   assert.strictEqual(core.leafHashHex(line), manual);
 });
 
-// ---------------------------------------------------------------------------
-// Artefak bukti (sidecar <fileLog>.proofs.json)
-// ---------------------------------------------------------------------------
 t("buildProofArtifacts: root artefak sama dengan root on-chain (hashForMode) — tidak mengubah algoritma", () => {
   const root = core.hashForMode(core.MODE_MERKLE, SAMPLE).hash;
   const a = core.buildProofArtifacts(SAMPLE_LINES, "auth.log#test", root);
@@ -207,9 +178,7 @@ t("saveProofArtifacts + loadProofArtifacts: round-trip utuh, dan menolak logId y
   const loaded = core.loadProofArtifacts(logFileCopy, "auth.log#rt", null);
   assert.strictEqual(loaded.logId, "auth.log#rt");
   assert.strictEqual(loaded.source, target);
-  // bukti yang dimuat tetap lolos verifikasi terhadap root on-chain
   assert.strictEqual(core.verifyLineProof(loaded.lines[0].content, loaded.lines[0].proof, root), true);
-  // logId lain tidak boleh memakai file bukti ini
   assert.strictEqual(core.loadProofArtifacts(logFileCopy, "auth.log#lain", null), null);
 });
 
@@ -242,9 +211,6 @@ t("loadProofArtifacts: MongoDB dipakai lebih dulu kalau ada, file bukti jadi cad
   assert.strictEqual(a.merkleRoot, fromDb.merkleRoot);
 });
 
-// ---------------------------------------------------------------------------
-// Batch (manifest + recordLogHashBatch)
-// ---------------------------------------------------------------------------
 t("parseManifest: komentar & baris kosong diabaikan, path berspasi tetap utuh", () => {
   const entries = core.parseManifest(
     ["# contoh manifest", "", "auth.log#01 /var/log/auth.log", "  sys.log#01  ./log dir/sys.log  ", "# akhir"].join("\n")
@@ -282,9 +248,6 @@ t("prepareBatchEntries: mode file tetap menerima file tanpa baris berisi", () =>
   assert.strictEqual(ok[0].hash, core.hashForMode(core.MODE_FILE, EMPTY_FILE).hash);
 });
 
-// ---------------------------------------------------------------------------
-// Runner sederhana (tanpa mocha, biar bisa jalan tanpa Hardhat)
-// ---------------------------------------------------------------------------
 (async () => {
   console.log("\nBackend collector core — unit test\n");
   let pass = 0;
@@ -292,10 +255,10 @@ t("prepareBatchEntries: mode file tetap menerima file tanpa baris berisi", () =>
   for (const [name, fn] of tests) {
     try {
       await fn();
-      console.log("  ✔ " + name);
+      console.log("  [OK] " + name);
       pass++;
     } catch (err) {
-      console.error("  ✘ " + name + "\n      " + (err.message || err));
+      console.error("  [GAGAL] " + name + "\n      " + (err.message || err));
       fail++;
     }
   }

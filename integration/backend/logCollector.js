@@ -1,59 +1,9 @@
 #!/usr/bin/env node
-/**
- * logCollector.js — Backend Log Collector (mode: SHA-256 file utuh)
- * ------------------------------------------------------------------
- * Membaca file log di server, menghitung SHA-256-nya, lalu berbicara dengan
- * smart contract SIEMLogger:
- *
- *   record  : mendaftarkan hash log untuk PERTAMA kali (dikunci on-chain)
- *   watch   : loop — hitung ulang hash, bandingkan dengan on-chain,
- *             dan kalau BEDA -> kirim transaksi verifyLogIntegrity supaya
- *             kontrak memancarkan event `TamperingDetected` (alarm on-chain)
- *             yang didengarkan oleh dashboard Joseph.
- *
- * Optimasi gas: pengecekan rutin memakai `verifyLogIntegrityView` (view,
- * GRATIS, tidak menulis state). Transaksi berbayar hanya dikirim kalau
- * memang terdeteksi tidak cocok.
- *
- * Skrip ini TIDAK butuh MongoDB. Pasangannya adalah merkleCollector.js, yang
- * memakai Merkle Root sebagai `logHash` — jangan pakai dua skrip untuk logId
- * yang sama (lihat integration/README.md).
- *
- * ---------------------------------------------------------------------------
- * CARA PAKAI
- * ---------------------------------------------------------------------------
- *   node logCollector.js record <fileLog> <logId>
- *   node logCollector.js watch  <fileLog> <logId> [intervalDetik] [maxIterasi]
- *   node logCollector.js batch  <manifest.txt>
- *
- * `batch` mendaftarkan banyak logId dalam SATU transaksi (recordLogHashBatch) —
- * manifest = file teks, satu entri per baris: <logId> <path file log>.
- *
- * maxIterasi 0 / tidak diisi = jalan terus (daemon). Contoh:
- *   node logCollector.js record ./sample/auth.log "auth.log#2026-10-09"
- *   node logCollector.js watch  ./sample/auth.log "auth.log#2026-10-09" 5
- *
- * ---------------------------------------------------------------------------
- * ENV YANG DIBUTUHKAN
- * ---------------------------------------------------------------------------
- * Nilainya boleh ditaruh di file `integration/backend/.env` (salin dari
- * `.env.example`) — dibaca otomatis oleh skrip ini. Environment variable dari
- * shell akan menang kalau keduanya diisi.
- *
- *   RPC_URL            endpoint testnet, mis. https://rpc.sepolia.org
- *   CONTRACT_ADDRESS   alamat hasil deploy (lihat deployments.json)
- *   PRIVATE_KEY        private key akun yang SUDAH diberi role
- *                      SOC_ANALYST atau ADMIN  (jangan commit file .env!)
- *   ABI_PATH           opsional, default ../../contracts/SIEMLogger.json
- */
 
 const core = require("./lib/collector-core");
 
 const MODE = core.MODE_FILE;
 
-// ---------------------------------------------------------------------------
-// Mode: record
-// ---------------------------------------------------------------------------
 async function cmdRecord(logFile, logId) {
   const { provider, wallet, contract } = await core.connect();
   const info = core.hashForMode(MODE, logFile);
@@ -74,7 +24,7 @@ async function cmdRecord(logFile, logId) {
     const tx = await contract.recordLogHash(logId, info.hash);
     console.log("⏳ transaksi terkirim:", tx.hash);
     const rc = await tx.wait();
-    console.log("✅ hash terkunci on-chain. gas:", rc.gasUsed.toString());
+    console.log("[OK] hash terkunci on-chain. gas:", rc.gasUsed.toString());
     const link = core.explorerLink(tx.hash);
     if (link) console.log("   " + link);
   } catch (err) {
@@ -82,9 +32,6 @@ async function cmdRecord(logFile, logId) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Mode: watch
-// ---------------------------------------------------------------------------
 async function cmdWatch(logFile, logId, intervalSec, maxIter) {
   const { provider, wallet, contract } = await core.connect();
   await provider.getNetwork();
@@ -103,7 +50,6 @@ async function cmdWatch(logFile, logId, intervalSec, maxIter) {
     iteration++;
     const info = core.hashForMode(MODE, logFile);
 
-    // 1) Cek GRATIS dulu (view, tidak menulis state, tidak butuh gas)
     let isMatch;
     try {
       isMatch = await contract.verifyLogIntegrityView(logId, info.hash);
@@ -114,56 +60,48 @@ async function cmdWatch(logFile, logId, intervalSec, maxIter) {
     const stamp = new Date().toLocaleTimeString("id-ID");
 
     if (isMatch) {
-      console.log(`[${stamp}] #${iteration} 🟢 AMAN     hash cocok (${core.short(info.hash)})`);
+      console.log(`[${stamp}] #${iteration} AMAN     hash cocok (${core.short(info.hash)})`);
       return;
     }
 
-    // 2) Tidak cocok — tapi pastikan dulu ini bukan "salah skrip".
-    //    Kalau hash on-chain justru cocok dengan hasil mode Merkle untuk file
-    //    yang sama, ini bukan tampering, cuma logId-nya dikelola
-    //    merkleCollector.js. Jangan cemari isTampered dengan alarm palsu
-    //    (flag itu satu arah, tidak bisa dikembalikan ke false).
     const mismatch = await core.detectModeMismatch(contract, logId, logFile, MODE);
     if (mismatch) {
-      console.log(`[${stamp}] #${iteration} ⚠️  SALAH SKRIP — logId ini direkam dengan mode "${mismatch.otherMode}"`);
+      console.log(`[${stamp}] #${iteration} [!] SALAH SKRIP — logId ini direkam dengan mode "${mismatch.otherMode}"`);
       console.log("            hash on-chain cocok dengan hasil hitung mode itu, jadi isi file TIDAK berubah.");
       console.log("            Alarm tidak dikirim. Pakai skrip merkleCollector.js untuk logId ini.");
       return;
     }
 
-    // 3) Benar-benar tidak cocok -> kirim transaksi supaya alarm tercatat on-chain
     tamperCount++;
     if (info.missing) {
-      console.log(`[${stamp}] #${iteration} 🔴 FILE LOG HILANG! ${logFile} sudah tidak ada di server`);
+      console.log(`[${stamp}] #${iteration} FILE LOG HILANG! ${logFile} sudah tidak ada di server`);
       console.log("            → penghapusan log = tampering. Mengirim transaksi verifyLogIntegrity…");
     } else {
-      console.log(`[${stamp}] #${iteration} 🔴 TAMPERED! hash server ${core.short(info.hash)} ≠ hash on-chain`);
+      console.log(`[${stamp}] #${iteration} TAMPERED! hash server ${core.short(info.hash)} ≠ hash on-chain`);
       console.log("            → mengirim transaksi verifyLogIntegrity untuk memicu event TamperingDetected…");
     }
     try {
       const tx = await contract.verifyLogIntegrity(logId, info.hash);
       const rc = await tx.wait();
 
-      // baca event dari receipt
       for (const log of rc.logs) {
         try {
           const parsed = contract.interface.parseLog(log);
           if (parsed && parsed.name === "TamperingDetected") {
-            console.log("            ⚠️  event TamperingDetected dipancarkan:");
+            console.log("            [!] event TamperingDetected dipancarkan:");
             console.log("                logId       :", parsed.args[0]);
             console.log("                hash ASLI   :", parsed.args[1]);
             console.log("                hash SERVER :", parsed.args[2]);
           }
         } catch (_) {
-          /* log dari kontrak lain, abaikan */
         }
       }
-      console.log("            ✅ alarm tercatat on-chain (gas " + rc.gasUsed.toString() + ")");
+      console.log("            [OK] alarm tercatat on-chain (gas " + rc.gasUsed.toString() + ")");
       const link = core.explorerLink(tx.hash);
       if (link) console.log("               " + link);
       console.log("            → dashboard SOC (Joseph) sekarang menerima event ini secara real-time.");
     } catch (err) {
-      console.error("            ❌ gagal mengirim transaksi:", core.explainError(contract, err));
+      console.error("            [GAGAL] gagal mengirim transaksi:", core.explainError(contract, err));
     }
   };
 
@@ -185,13 +123,6 @@ async function cmdWatch(logFile, logId, intervalSec, maxIter) {
   }, intervalSec * 1000);
 }
 
-// ---------------------------------------------------------------------------
-// Mode: batch — banyak logId dalam SATU transaksi (recordLogHashBatch)
-// ---------------------------------------------------------------------------
-/**
- * Manifest = file teks, satu entri per baris: `<logId> <path file log>`.
- * Hemat ~19% gas per log dibanding record satu per satu (lihat README).
- */
 async function cmdBatch(manifestPath) {
   const fs = require("fs");
   if (!fs.existsSync(manifestPath)) core.die("Manifest tidak ditemukan: " + manifestPath);
@@ -201,8 +132,6 @@ async function cmdBatch(manifestPath) {
   const net = await provider.getNetwork();
   const { ok, bad } = core.prepareBatchEntries(MODE, entries);
 
-  // Skrining GRATIS (view): kontrak revert all-or-nothing, jadi satu logId yang
-  // sudah terdaftar akan menggagalkan seluruh batch kalau ikut dikirim.
   const sudahAda = [];
   const akanKirim = [];
   for (const e of ok) {
@@ -220,8 +149,8 @@ async function cmdBatch(manifestPath) {
   ]);
 
   for (const e of akanKirim) console.log("  • " + e.logId + "  " + core.short(e.hash));
-  for (const e of sudahAda) console.log("  ⏭️  DILEWATI (sudah terdaftar on-chain): " + e.logId);
-  for (const e of bad) console.log("  ⚠️  DILEWATI (" + e.reason + "): " + e.logId + " → " + e.file);
+  for (const e of sudahAda) console.log("  ⏭ DILEWATI (sudah terdaftar on-chain): " + e.logId);
+  for (const e of bad) console.log("  [!] DILEWATI (" + e.reason + "): " + e.logId + " → " + e.file);
 
   if (akanKirim.length === 0) {
     console.log("Tidak ada entri yang perlu dikirim. Selesai.");
@@ -236,7 +165,7 @@ async function cmdBatch(manifestPath) {
     console.log("⏳ transaksi batch terkirim:", tx.hash);
     const rc = await tx.wait();
     const gas = BigInt(rc.gasUsed.toString());
-    console.log("✅ " + akanKirim.length + " logId terkunci on-chain dalam 1 transaksi.");
+    console.log("[OK] " + akanKirim.length + " logId terkunci on-chain dalam 1 transaksi.");
     console.log("   gas total : " + gas.toString());
     console.log("   per log   : " + (gas / BigInt(akanKirim.length)).toString() + " gas");
     const link = core.explorerLink(tx.hash);
@@ -246,9 +175,6 @@ async function cmdBatch(manifestPath) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Entry point
-// ---------------------------------------------------------------------------
 async function main() {
   const [mode, logFile, logId, intervalArg, maxIterArg] = process.argv.slice(2);
 

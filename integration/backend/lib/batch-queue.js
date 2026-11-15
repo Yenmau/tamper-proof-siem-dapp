@@ -1,22 +1,5 @@
 "use strict";
-/**
- * batch-queue.js — logika antrean untuk collectorService.js
- * ---------------------------------------------------------------------------
- * Semua fungsi di sini MURNI (tanpa jaringan, tanpa DB, tanpa filesystem) supaya
- * bisa diuji tanpa node blockchain. Tugasnya hanya menjawab:
- *
- *   - batch mana yang BELUM pernah direkam on-chain?
- *   - batch mana yang sudah waktunya dicek ulang integritasnya?
- *
- * Konsep "state" = objek { [logId]: { file, root, recordedAt, lastCheck, tampered } }.
- */
 
-/**
- * Baca index.ndjson yang ditulis log-shipper (1 JSON per baris).
- * Baris kosong dilewati; baris rusak dikumpulkan, tidak menggagalkan semuanya.
- *
- * @returns {{entries: {logId: string, file: string, lines?: number}[], invalid: {line: number, reason: string}[]}}
- */
 function parseIndex(text) {
   const entries = [];
   const invalid = [];
@@ -47,18 +30,11 @@ function parseIndex(text) {
   return { entries, invalid };
 }
 
-/** Entri index yang belum ada di state → harus direkam on-chain. */
 function pendingRecords(entries, state) {
   const known = state || {};
   return (entries || []).filter((e) => !known[e.logId]);
 }
 
-/**
- * Entri yang sudah direkam tapi sudah lewat `intervalMs` sejak pengecekan
- * terakhir → harus diverifikasi ulang. Entri yang sudah `tampered` tidak dicek
- * lagi: flag `isTampered` di kontrak satu arah (tidak bisa kembali ke false),
- * jadi transaksi tambahan hanya membuang gas.
- */
 function dueVerifications(state, nowMs, intervalMs, logIds) {
   const known = state || {};
   const only = Array.isArray(logIds) && logIds.length > 0 ? new Set(logIds) : null;
@@ -75,7 +51,6 @@ function dueVerifications(state, nowMs, intervalMs, logIds) {
   return due;
 }
 
-/** Rekor state baru untuk logId yang baru direkam. */
 function recordStateUpdate(prev, { file, root, nowMs }) {
   return {
     ...(prev || {}),
@@ -87,7 +62,6 @@ function recordStateUpdate(prev, { file, root, nowMs }) {
   };
 }
 
-/** Rekor state setelah pengecekan integritas. */
 function verifyStateUpdate(prev, { isMatch, nowMs }) {
   const base = { ...(prev || {}) };
   base.lastCheck = nowMs;
@@ -96,7 +70,6 @@ function verifyStateUpdate(prev, { isMatch, nowMs }) {
   return base;
 }
 
-/** Ringkasan untuk log/CLI. */
 function summarize(state) {
   const recs = Object.entries(state || {});
   const tampered = recs.filter(([, r]) => r && r.tampered).map(([id]) => id);

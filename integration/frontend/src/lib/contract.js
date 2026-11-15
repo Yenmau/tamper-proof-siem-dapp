@@ -1,6 +1,5 @@
 import { JsonRpcProvider, BrowserProvider, Contract } from "ethers";
 
-// ABI sepotong — hanya yang dipakai dashboard (baca + tulis aset + event).
 export const ABI = [
   "function VERSION() view returns (string)",
   "function roles(address) view returns (uint8)",
@@ -11,7 +10,6 @@ export const ABI = [
   "function getLogEntry(string _logId) view returns (string logHash, uint256 timestamp, uint64 verifiedAt, bool isTampered, address recordedBy)",
   "function getLogStatus(string _logId) view returns (string, uint256, bool)",
   "function verifyLogIntegrityView(string _logId, string _currentHash) view returns (bool)",
-  // --- registry aset (v4.0): CRUD penuh, log tetap immutable ---
   "function createAsset(string _assetId, string _name, string _category, string _location)",
   "function updateAsset(string _assetId, string _name, string _category, string _location)",
   "function deleteAsset(string _assetId)",
@@ -27,18 +25,11 @@ export const ABI = [
   "event LogVerified(string logId, string currentHash, bool isMatch, uint256 timestamp)",
 ];
 
-/** Provider HANYA-BACA: dashboard tetap jalan tanpa MetaMask. */
 export function makeReadOnly(rpcUrl, address) {
   const provider = new JsonRpcProvider(rpcUrl);
   return { provider, contract: new Contract(address, ABI, provider), kind: "readonly" };
 }
 
-/**
- * LOGIN: pakai MetaMask. Mengembalikan koneksi dengan dua wajah:
- *   - `read`     : kontrak lewat provider (gratis, untuk polling tabel)
- *   - `write`    : kontrak lewat signer (untuk createAsset/updateAsset/deleteAsset)
- * Keduanya memakai alamat kontrak & ABI yang sama.
- */
 export async function connectWallet(address) {
   if (!window.ethereum) throw new Error("MetaMask tidak terpasang di browser ini");
   const provider = new BrowserProvider(window.ethereum);
@@ -55,7 +46,6 @@ export async function connectWallet(address) {
   };
 }
 
-/** Registry aset on-chain (v4.0). */
 export async function readAssets(contract) {
   const count = Number(await contract.getAssetCount());
   const rows = [];
@@ -76,7 +66,6 @@ export async function readAssets(contract) {
   return rows;
 }
 
-/** Apakah akun ini boleh create/update aset (ADMIN atau SOC_ANALYST)? */
 export async function canManageAssets(contract, address) {
   try {
     return await contract.canManageAssets(address);
