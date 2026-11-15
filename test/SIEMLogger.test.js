@@ -2,12 +2,10 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 
-// Hash contoh, meniru keluaran SHA-256 dari backend (64 hex char).
 const H1 = "0x" + "a".repeat(64);
 const H2 = "0x" + "b".repeat(64);
 const H_TAMPERED = "0x" + "f".repeat(64);
 
-// Role enum: 0=NONE, 1=AUDITOR, 2=SOC_ANALYST, 3=ADMIN
 const NONE = 0n;
 const AUDITOR = 1n;
 const ANALYST = 2n;
@@ -22,7 +20,6 @@ async function deploy() {
 }
 
 describe("SIEMLogger v4.0", function () {
-  // -------------------------------------------------------------------
   describe("A. Dasar & RBAC", function () {
     it("1. deploy: owner jadi ADMIN pertama, VERSION 4.0.0", async function () {
       const { c, owner } = await deploy();
@@ -53,7 +50,6 @@ describe("SIEMLogger v4.0", function () {
         .to.emit(c, "RoleAssigned")
         .withArgs(auditor.address, AUDITOR);
       expect(await c.getRoleName(auditor.address)).to.equal("AUDITOR");
-      // auditor punya role, TAPI bukan operator (tidak boleh tulis state)
       expect(await c.hasRole(auditor.address)).to.equal(true);
       expect(await c.isOperator(auditor.address)).to.equal(false);
       expect(await c.isAdmin(auditor.address)).to.equal(false);
@@ -63,18 +59,14 @@ describe("SIEMLogger v4.0", function () {
       const { c, analyst, outsider } = await deploy();
       await c.addAnalyst(analyst.address);
 
-      // boleh menulis
       await c.connect(analyst).recordLogHash("auth.log", H1);
       expect((await c.getLogStatus("auth.log"))[0]).to.equal(H1);
-      // recordedBy mencatat akun analyst
       expect((await c.getLogEntry("auth.log"))[4]).to.equal(analyst.address);
 
-      // boleh memverifikasi (dan memicu alarm)
       await expect(c.connect(analyst).verifyLogIntegrity("auth.log", H_TAMPERED))
         .to.emit(c, "TamperingDetected")
         .withArgs("auth.log", H1, H_TAMPERED);
 
-      // TIDAK boleh kelola role
       await expect(
         c.connect(analyst).setRole(outsider.address, ANALYST)
       ).to.be.revertedWithCustomError(c, "NotAdmin");
@@ -86,13 +78,11 @@ describe("SIEMLogger v4.0", function () {
     it("4. AUDITOR read-only: boleh lihat & verifyLogIntegrityView, TIDAK boleh tulis", async function () {
       const { c, auditor } = await deploy();
       await c.addAuditor(auditor.address);
-      await c.recordLogHash("auth.log", H1); // didaftarkan oleh owner
+      await c.recordLogHash("auth.log", H1);
 
-      // boleh membaca
       const s = await c.connect(auditor).getLogStatus("auth.log");
       expect(s[0]).to.equal(H1);
 
-      // boleh verifikasi GRATIS (view) — inti tugas auditor
       expect(
         await c.connect(auditor).verifyLogIntegrityView("auth.log", H1)
       ).to.equal(true);
@@ -100,7 +90,6 @@ describe("SIEMLogger v4.0", function () {
         await c.connect(auditor).verifyLogIntegrityView("auth.log", H_TAMPERED)
       ).to.equal(false);
 
-      // TIDAK boleh menulis state
       await expect(
         c.connect(auditor).recordLogHash("other.log", H1)
       ).to.be.revertedWithCustomError(c, "NotOperator");
@@ -108,7 +97,6 @@ describe("SIEMLogger v4.0", function () {
         c.connect(auditor).verifyLogIntegrity("auth.log", H_TAMPERED)
       ).to.be.revertedWithCustomError(c, "NotOperator");
 
-      // dan tidak boleh menyentuh role
       await expect(
         c.connect(auditor).setRole(auditor.address, ANALYST)
       ).to.be.revertedWithCustomError(c, "NotAdmin");
@@ -125,7 +113,6 @@ describe("SIEMLogger v4.0", function () {
         c.connect(outsider).verifyLogIntegrity("auth.log", H1)
       ).to.be.revertedWithCustomError(c, "NotOperator");
 
-      // baca tetap boleh (data on-chain publik)
       expect((await c.connect(outsider).getLogStatus("auth.log"))[0]).to.equal(H1);
       expect(
         await c.connect(outsider).verifyLogIntegrityView("auth.log", H1)
@@ -143,11 +130,9 @@ describe("SIEMLogger v4.0", function () {
       expect(await c.getAdmins()).to.deep.equal([await (await c.admin()), analyst.address]);
       expect(await c.getRoleName(analyst.address)).to.equal("ADMIN");
 
-      // admin (bukan owner) juga boleh mengangkat role orang lain
       await c.connect(analyst).addAuditor(outsider.address);
       expect(await c.roles(outsider.address)).to.equal(AUDITOR);
 
-      // cabut admin
       await expect(c.removeAdmin(analyst.address))
         .to.emit(c, "AdminRemoved")
         .withArgs(analyst.address);
@@ -159,12 +144,10 @@ describe("SIEMLogger v4.0", function () {
       const { c, owner, analyst, outsider } = await deploy();
       await c.addAnalyst(analyst.address);
 
-      // hanya ADMIN yang boleh mengubah role
       await expect(
         c.connect(outsider).setRole(outsider.address, ANALYST)
       ).to.be.revertedWithCustomError(c, "NotAdmin");
 
-      // owner tidak bisa diubah/dicabut
       await expect(
         c.setRole(owner.address, ANALYST)
       ).to.be.revertedWithCustomError(c, "CannotChangeOwner");
@@ -172,27 +155,22 @@ describe("SIEMLogger v4.0", function () {
         c.removeRole(owner.address)
       ).to.be.revertedWithCustomError(c, "CannotChangeOwner");
 
-      // address(0) ditolak
       await expect(
         c.setRole(ethers.ZeroAddress, ANALYST)
       ).to.be.revertedWithCustomError(c, "InvalidAddress");
 
-      // tidak boleh set role NONE lewat setRole (pakai removeRole)
       await expect(
         c.setRole(outsider.address, NONE)
       ).to.be.revertedWithCustomError(c, "InvalidRole");
 
-      // set ke role yang sama -> SameRole
       await expect(
         c.setRole(analyst.address, ANALYST)
       ).to.be.revertedWithCustomError(c, "SameRole").withArgs(analyst.address, ANALYST);
 
-      // removeRole pada akun tanpa role -> SameRole(account, NONE)
       await expect(
         c.removeRole(outsider.address)
       ).to.be.revertedWithCustomError(c, "SameRole").withArgs(outsider.address, NONE);
 
-      // removeRole yang sah -> RoleRevoked + kembali NONE
       await expect(c.removeRole(analyst.address))
         .to.emit(c, "RoleRevoked")
         .withArgs(analyst.address, ANALYST);
@@ -204,7 +182,6 @@ describe("SIEMLogger v4.0", function () {
     });
   });
 
-  // -------------------------------------------------------------------
   describe("B. Fungsi inti (kompatibel v1.0)", function () {
     it("8. recordLogHash menyimpan hash + getLogStatus mengembalikannya", async function () {
       const { c, owner } = await deploy();
@@ -314,7 +291,6 @@ describe("SIEMLogger v4.0", function () {
     });
   });
 
-  // -------------------------------------------------------------------
   describe("C. Registry aset — CRUD on-chain (v4.0)", function () {
     it("16. createAsset: ADMIN & SOC_ANALYST boleh, data tersimpan + event", async function () {
       const { c, owner, analyst } = await deploy();
@@ -324,7 +300,6 @@ describe("SIEMLogger v4.0", function () {
         .to.emit(c, "AssetCreated")
         .withArgs("srv-01", "Web Server 01", "server", owner.address, anyUint);
 
-      // analyst juga boleh menambah
       await c.connect(analyst).createAsset("db-01", "Database Utama", "database", "rack B");
       expect(await c.getAssetCount()).to.equal(2n);
       expect(await c.getAssetIds()).to.deep.equal(["srv-01", "db-01"]);
@@ -336,10 +311,10 @@ describe("SIEMLogger v4.0", function () {
       expect(a[0]).to.equal("Web Server 01");
       expect(a[1]).to.equal("server");
       expect(a[2]).to.equal("rack A / ruang server");
-      expect(a[3]).to.be.greaterThan(0n);          // createdAt
-      expect(a[4]).to.equal(a[3]);                 // updatedAt == createdAt saat baru
-      expect(a[5]).to.equal(owner.address);        // createdBy
-      expect(a[6]).to.equal(owner.address);        // updatedBy
+      expect(a[3]).to.be.greaterThan(0n);
+      expect(a[4]).to.equal(a[3]);
+      expect(a[5]).to.equal(owner.address);
+      expect(a[6]).to.equal(owner.address);
     });
 
     it("17. createAsset: RBAC & validasi (outsider/auditor ditolak, id/nama kosong, duplikat)", async function () {
@@ -348,7 +323,6 @@ describe("SIEMLogger v4.0", function () {
       await c.addAuditor(auditor.address);
       await c.createAsset("srv-01", "Web Server 01", "server", "rack A");
 
-      // AUDITOR read-only & NONE: tidak boleh menambah
       await expect(
         c.connect(auditor).createAsset("srv-02", "X", "server", "rack A")
       ).to.be.revertedWithCustomError(c, "NotOperator");
@@ -356,7 +330,6 @@ describe("SIEMLogger v4.0", function () {
         c.connect(outsider).createAsset("srv-02", "X", "server", "rack A")
       ).to.be.revertedWithCustomError(c, "NotOperator");
 
-      // validasi input
       await expect(c.createAsset("", "X", "server", "rack A"))
         .to.be.revertedWithCustomError(c, "EmptyId");
       await expect(c.createAsset("srv-02", "", "server", "rack A"))
@@ -383,11 +356,10 @@ describe("SIEMLogger v4.0", function () {
       const sesudah = await c.getAsset("srv-01");
       expect(sesudah[0]).to.equal("Web Server 01 (pindah)");
       expect(sesudah[2]).to.equal("rack C");
-      expect(sesudah[3]).to.equal(sebelum[3]);       // createdAt TIDAK berubah
-      expect(sesudah[5]).to.equal(sebelum[5]);       // createdBy TIDAK berubah
-      expect(sesudah[6]).to.equal(analyst.address);  // updatedBy berubah
+      expect(sesudah[3]).to.equal(sebelum[3]);
+      expect(sesudah[5]).to.equal(sebelum[5]);
+      expect(sesudah[6]).to.equal(analyst.address);
 
-      // jumlah aset tidak bertambah karena update
       expect(await c.getAssetCount()).to.equal(1n);
 
       await expect(
@@ -407,13 +379,11 @@ describe("SIEMLogger v4.0", function () {
       await c.createAsset("a-2", "Aset 2", "database", "rack B");
       await c.createAsset("a-3", "Aset 3", "endpoint", "meja 1");
 
-      // SOC_ANALYST & AUDITOR tidak boleh menghapus
       await expect(c.connect(analyst).deleteAsset("a-1"))
         .to.be.revertedWithCustomError(c, "NotAdmin");
       await expect(c.connect(auditor).deleteAsset("a-1"))
         .to.be.revertedWithCustomError(c, "NotAdmin");
 
-      // ADMIN boleh — hapus yang di tengah supaya swap-pop ikut teruji
       await expect(c.deleteAsset("a-2"))
         .to.emit(c, "AssetDeleted")
         .withArgs("a-2", await c.admin(), anyUint);
@@ -423,16 +393,12 @@ describe("SIEMLogger v4.0", function () {
       expect(await c.getAssetIds()).to.deep.equal(["a-1", "a-3"]);
       expect(await c.getAssetIdAt(1)).to.equal("a-3");
 
-      // data benar-benar hilang dari state
       await expect(c.getAsset("a-2"))
         .to.be.revertedWithCustomError(c, "AssetNotFound").withArgs("a-2");
-      // aset lain tetap utuh
       expect((await c.getAsset("a-3"))[0]).to.equal("Aset 3");
-      // dan aset yang dipindah posisinya masih bisa dihapus (index ikut diperbaiki)
       await c.deleteAsset("a-3");
       expect(await c.getAssetIds()).to.deep.equal(["a-1"]);
 
-      // id yang sudah dihapus boleh dipakai lagi (bukan LogEntry yang immutable)
       await c.createAsset("a-2", "Aset 2 (baru)", "database", "rack C");
       expect(await c.getAssetCount()).to.equal(2n);
       expect((await c.getAsset("a-2"))[0]).to.equal("Aset 2 (baru)");
@@ -468,14 +434,12 @@ describe("SIEMLogger v4.0", function () {
       const { c } = await deploy();
       await c.recordLogHash("auth.log", H1);
 
-      // tidak ada fungsi update/delete untuk log di ABI (hanya aset)
       const namaFungsi = Array.from(c.interface.fragments)
         .filter((f) => f.type === "function")
         .map((f) => f.name);
       const adaUpdateLog = namaFungsi.some((f) => /updateLog|deleteLog|removeLog|setLogHash/i.test(f));
       expect(adaUpdateLog).to.equal(false);
 
-      // dan memang tidak bisa ditimpa
       await expect(c.recordLogHash("auth.log", H2))
         .to.be.revertedWithCustomError(c, "LogAlreadyExists");
       expect((await c.getLogStatus("auth.log"))[0]).to.equal(H1);

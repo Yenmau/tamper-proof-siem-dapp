@@ -5,24 +5,12 @@ import { fmtTime, shortAddr } from "../lib/format.js";
 
 const KOSONG = { assetId: "", name: "", category: "server", location: "" };
 
-/**
- * REGISTRY ASET — "On-chain State Management" dengan CRUD penuh:
- *   INSERT : createAsset()   (ADMIN / SOC_ANALYST)
- *   VIEW   : getAssetIds() + getAsset()
- *   UPDATE : updateAsset()   (ADMIN / SOC_ANALYST)
- *   DELETE : deleteAsset()   (ADMIN saja)
- *
- * Berbeda dari registry log yang sengaja IMMUTABLE (hash-nya tidak boleh
- * ditimpa), data aset/inventaris memang berubah: pindah lokasi, ganti
- * kategori, atau dinonaktifkan. Setiap perubahan tetap meninggalkan jejak
- * permanen berupa event di blockchain.
- */
 export default function AssetsPanel({ session, onEvent }) {
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState(KOSONG);
-  const [mode, setMode] = useState("create"); // create | edit
+  const [mode, setMode] = useState("create");
   const [busy, setBusy] = useState(false);
-  const [pesan, setPesan] = useState(null); // { kind, text }
+  const [pesan, setPesan] = useState(null);
   const [q, setQ] = useState("");
 
   const role = session?.role || "NONE";

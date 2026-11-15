@@ -1,35 +1,4 @@
 #!/usr/bin/env node
-/**
- * collectorService.js — backend daemon: batch log -> on-chain, otomatis
- * ---------------------------------------------------------------------------
- * Ini "lem" antara server korban (#3) dan smart contract (#1):
- *
- *   log-shipper menulis batch + index.ndjson
- *        -> service ini merekam tiap batch baru (Merkle Root) ke kontrak
- *        -> lalu mengecek ulang integritasnya secara berkala (view, GRATIS)
- *        -> kalau berubah/hilang, kirim verifyLogIntegrity -> event
- *           TamperingDetected -> dashboard (#5) menyalakan alarm
- *
- * Tanpa service ini, `record`/`watch` harus dijalankan manual per file.
- *
- * ---------------------------------------------------------------------------
- * CARA PAKAI
- * ---------------------------------------------------------------------------
- *   node collectorService.js                 # daemon (scan 10s, verify 30s)
- *   node collectorService.js --once          # satu putaran lalu keluar (CI/uji)
- *   node collectorService.js --once --no-db  # paksa tanpa MongoDB
- *
- * ENV:
- *   BATCH_DIR          folder batch (default: <repo>/siem-batches)
- *   STATE_PATH         file state JSON (default: <BATCH_DIR>/.collector-state.json)
- *   SCAN_INTERVAL_MS   jeda scan batch baru (default 10000)
- *   VERIFY_INTERVAL_MS jeda verifikasi ulang (default 30000)
- *   VICTIM_HOST        awalan logId untuk file yang tidak ada di index
- *                      (default: nama host mesin ini)
- *   + RPC_URL, CONTRACT_ADDRESS, PRIVATE_KEY (lihat integration/backend/.env)
- *
- * Akun di PRIVATE_KEY harus ber-role SOC_ANALYST atau ADMIN.
- */
 
 const fs = require("fs");
 const os = require("os");
@@ -49,15 +18,12 @@ const ONCE = process.argv.includes("--once");
 
 const stamp = () => new Date().toLocaleTimeString("id-ID");
 
-// ---------------------------------------------------------------------------
-// State (file JSON kecil, bukan DB — MongoDB tetap opsional)
-// ---------------------------------------------------------------------------
 function loadState() {
   try {
     if (!fs.existsSync(STATE_PATH)) return {};
     return JSON.parse(fs.readFileSync(STATE_PATH, "utf8")) || {};
   } catch (err) {
-    console.log(`[${stamp()}] ⚠️  state rusak (${err.message}) — mulai dari state kosong`);
+    console.log(`[${stamp()}] [!] state rusak (${err.message}) — mulai dari state kosong`);
     return {};
   }
 }
@@ -69,23 +35,20 @@ function saveState(state) {
     fs.writeFileSync(tmp, JSON.stringify(state, null, 2) + "\n", "utf8");
     fs.renameSync(tmp, STATE_PATH);
   } catch (err) {
-    console.log(`[${stamp()}] ⚠️  gagal menyimpan state: ${err.message}`);
+    console.log(`[${stamp()}] [!] gagal menyimpan state: ${err.message}`);
   }
 }
 
-// ---------------------------------------------------------------------------
-// Kumpulkan kandidat batch: dari index.ndjson + file *.log yang belum terindeks
-// ---------------------------------------------------------------------------
 function collectCandidates() {
   const fromIndex = [];
   if (fs.existsSync(INDEX_PATH)) {
     const { entries, invalid } = queue.parseIndex(fs.readFileSync(INDEX_PATH, "utf8"));
     fromIndex.push(...entries);
     for (const bad of invalid) {
-      console.log(`[${stamp()}] ⚠️  index.ndjson baris ${bad.line}: ${bad.reason} (dilewati)`);
+      console.log(`[${stamp()}] [!] index.ndjson baris ${bad.line}: ${bad.reason} (dilewati)`);
     }
   } else {
-    console.log(`[${stamp()}] ℹ️  ${INDEX_PATH} belum ada — pakai pemindaian folder`);
+    console.log(`[${stamp()}] ℹ ${INDEX_PATH} belum ada — pakai pemindaian folder`);
   }
 
   const known = new Set(fromIndex.map((e) => e.file));
@@ -99,30 +62,25 @@ function collectCandidates() {
   return [...fromIndex, ...extra].map((e) => ({ ...e, file: path.isAbsolute(e.file) ? e.file : path.join(BATCH_DIR, e.file) }));
 }
 
-// ---------------------------------------------------------------------------
-// Rekam batch yang belum ada on-chain
-// ---------------------------------------------------------------------------
 async function recordPending(contract, wallet, state, candidates) {
   const pending = queue.pendingRecords(candidates, state).filter((e) => {
     if (fs.existsSync(e.file)) return true;
-    console.log(`[${stamp()}] ⚠️  ${e.logId}: file ${path.basename(e.file)} tidak ada — dilewati`);
+    console.log(`[${stamp()}] [!] ${e.logId}: file ${path.basename(e.file)} tidak ada — dilewati`);
     return false;
   });
   if (pending.length === 0) return 0;
 
-  // Siapkan hash + bukti per baris; file yang kosong dilewati (mode Merkle tidak
-  // punya daun untuk dibangun).
   const siap = [];
   for (const e of pending) {
     const info = core.hashForMode(MODE, e.file);
     if (info.empty) {
-      console.log(`[${stamp()}] ⚠️  ${e.logId}: file ada tapi 0 baris — dilewati`);
+      console.log(`[${stamp()}] [!] ${e.logId}: file ada tapi 0 baris — dilewati`);
       continue;
     }
     const artifacts = core.buildProofArtifacts(info.lines, e.logId, info.hash);
     const rusak = artifacts.lines.filter((l) => !core.verifyLineProof(l.content, l.proof, artifacts.merkleRoot)).length;
     if (rusak > 0) {
-      console.log(`[${stamp()}] ⚠️  ${e.logId}: ${rusak} bukti baris gagal diverifikasi — dilewati`);
+      console.log(`[${stamp()}] [!] ${e.logId}: ${rusak} bukti baris gagal diverifikasi — dilewati`);
       continue;
     }
     core.saveProofArtifacts(e.file, artifacts);
@@ -130,7 +88,6 @@ async function recordPending(contract, wallet, state, candidates) {
   }
   if (siap.length === 0) return 0;
 
-  // Skrining gratis: logId yang sudah terdaftar (mis. service restart) tidak dikirim.
   const belumAda = [];
   for (const e of siap) {
     if (await core.onChainHashOf(contract, e.logId)) {
@@ -161,7 +118,7 @@ async function recordPending(contract, wallet, state, candidates) {
     const now = Date.now();
     for (const e of belumAda) {
       state[e.logId] = queue.recordStateUpdate(state[e.logId], { file: e.file, root: e.hash, nowMs: now });
-      console.log(`[${stamp()}] ✅ rekam ${e.logId} (${e.lines} baris) ${core.short(e.hash)}`);
+      console.log(`[${stamp()}] [OK] rekam ${e.logId} (${e.lines} baris) ${core.short(e.hash)}`);
     }
     console.log(
       `[${stamp()}]    ${belumAda.length} batch dalam 1 transaksi, gas ${gas.toString()} (${(gas / BigInt(belumAda.length)).toString()}/batch)`
@@ -169,14 +126,11 @@ async function recordPending(contract, wallet, state, candidates) {
     saveState(state);
     return belumAda.length;
   } catch (err) {
-    console.log(`[${stamp()}] ❌ gagal merekam: ${core.explainError(contract, err)}`);
+    console.log(`[${stamp()}] [GAGAL] gagal merekam: ${core.explainError(contract, err)}`);
     return 0;
   }
 }
 
-// ---------------------------------------------------------------------------
-// Verifikasi berkala (view gratis; transaksi hanya kalau benar-benar berbeda)
-// ---------------------------------------------------------------------------
 async function verifyDue(contract, state) {
   const due = queue.dueVerifications(state, Date.now(), VERIFY_MS);
   let alarms = 0;
@@ -186,7 +140,7 @@ async function verifyDue(contract, state) {
     try {
       isMatch = await contract.verifyLogIntegrityView(item.logId, info.hash);
     } catch (err) {
-      console.log(`[${stamp()}] ❌ ${item.logId}: ${core.explainError(contract, err)}`);
+      console.log(`[${stamp()}] [GAGAL] ${item.logId}: ${core.explainError(contract, err)}`);
       continue;
     }
 
@@ -195,15 +149,13 @@ async function verifyDue(contract, state) {
       continue;
     }
 
-    // Bukan tampering, cuma logId ini direkam mode lain (hash file utuh)?
     const mismatch = await core.detectModeMismatch(contract, item.logId, item.file, MODE);
     if (mismatch) {
-      console.log(`[${stamp()}] ⚠️  ${item.logId}: direkam dengan mode "${mismatch.otherMode}" — alarm ditahan`);
+      console.log(`[${stamp()}] [!] ${item.logId}: direkam dengan mode "${mismatch.otherMode}" — alarm ditahan`);
       state[item.logId] = queue.verifyStateUpdate(state[item.logId], { isMatch: true, nowMs: Date.now() });
       continue;
     }
 
-    // Benar-benar berbeda: kirim transaksi supaya alarm tercatat on-chain.
     try {
       const tx = await contract.verifyLogIntegrity(item.logId, info.hash);
       const rc = await tx.wait();
@@ -211,12 +163,11 @@ async function verifyDue(contract, state) {
         try {
           const parsed = contract.interface.parseLog(log);
           if (parsed && parsed.name === "TamperingDetected") {
-            console.log(`[${stamp()}] 🔴 TAMPERED ${parsed.args[0]}`);
+            console.log(`[${stamp()}] TAMPERED ${parsed.args[0]}`);
             console.log(`             hash ASLI  : ${parsed.args[1]}`);
             console.log(`             hash SERVER: ${parsed.args[2]}`);
           }
         } catch (_) {
-          /* log kontrak lain */
         }
       }
       state[item.logId] = queue.verifyStateUpdate(state[item.logId], { isMatch: false, nowMs: Date.now() });
@@ -225,16 +176,13 @@ async function verifyDue(contract, state) {
       const link = core.explorerLink(tx.hash);
       if (link) console.log(`             ${link}`);
     } catch (err) {
-      console.log(`[${stamp()}] ❌ gagal kirim alarm ${item.logId}: ${core.explainError(contract, err)}`);
+      console.log(`[${stamp()}] [GAGAL] gagal kirim alarm ${item.logId}: ${core.explainError(contract, err)}`);
     }
   }
   if (alarms > 0) saveState(state);
   return alarms;
 }
 
-// ---------------------------------------------------------------------------
-// Satu putaran
-// ---------------------------------------------------------------------------
 async function pass(contract, wallet, state) {
   const candidates = collectCandidates();
   const recorded = await recordPending(contract, wallet, state, candidates);
@@ -246,9 +194,6 @@ async function pass(contract, wallet, state) {
   return { recorded, alarms, ringkas };
 }
 
-// ---------------------------------------------------------------------------
-// Entry point
-// ---------------------------------------------------------------------------
 async function main() {
   if (!fs.existsSync(BATCH_DIR)) core.die("Folder BATCH_DIR tidak ada: " + BATCH_DIR);
   const { provider, wallet, contract } = await core.connect();
@@ -275,7 +220,7 @@ async function main() {
     try {
       await pass(contract, wallet, state);
     } catch (err) {
-      console.log(`[${stamp()}] ❌ putaran gagal: ${err.message || err}`);
+      console.log(`[${stamp()}] [GAGAL] putaran gagal: ${err.message || err}`);
     }
   };
   await loop();

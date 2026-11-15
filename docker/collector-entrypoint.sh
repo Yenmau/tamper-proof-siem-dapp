@@ -1,6 +1,4 @@
 #!/bin/sh
-# Siapkan env collector: alamat kontrak & RPC boleh datang dari env; kalau
-# alamat kosong, dibaca dari volume /state hasil service `deploy` (tunggu dulu).
 set -e
 
 : "${STATE_DIR:=/state}"
@@ -34,3 +32,4 @@ mkdir -p "$BATCH_DIR"
 echo "[collector] RPC=${RPC_URL} kontrak=${CONTRACT_ADDRESS} batch=${BATCH_DIR}"
 
 exec node /repo/integration/backend/collectorService.js "$@"
+

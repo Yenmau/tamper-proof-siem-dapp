@@ -1,19 +1,4 @@
-// src/lib/wallet.js
-//
-// Login pakai wallet address + klien API off-chain.
-//
-// Alurnya:
-//   1. `connectWallet`  -> minta akun ke MetaMask (eth_requestAccounts)
-//   2. role dibaca dari KONTRAK (`getRoleName`) — bukan dari database, supaya
-//      otoritas tidak bisa dipalsukan di sisi klien
-//   3. setiap request tulis ke API off-chain ditandatangani (`personal_sign`)
-//      atas pesan yang memuat timestamp + nonce, lalu diverifikasi server
-//      DAN dicek role-nya lagi lewat kontrak.
-//
-// Pesan & encode base64 di bawah HARUS sama dengan integration/backend/api/lib/auth.js
-// (format pesan, dan pengiriman base64 karena header HTTP tidak boleh berisi baris baru).
 
-/** Bangun pesan kanonik — cermin dari buildMessage() di backend. */
 export function buildMessage({ wallet, ts, nonce }) {
   return ["SIEM Off-Chain API", `wallet: ${String(wallet).toLowerCase()}`, `timestamp: ${ts}`, `nonce: ${nonce}`].join("\n");
 }
@@ -26,7 +11,6 @@ function acakNonce() {
     .join("");
 }
 
-/** Header autentikasi untuk satu request (tanda tangan sekali pakai). */
 export async function authHeaders(signer, walletAddr) {
   const ts = Math.floor(Date.now() / 1000);
   const nonce = acakNonce();
@@ -34,16 +18,11 @@ export async function authHeaders(signer, walletAddr) {
   const signature = await signer.signMessage(message);
   return {
     "x-wallet": walletAddr,
-    // btoa aman di sini karena pesan hanya berisi ASCII
     "x-message": btoa(message),
     "x-signature": signature,
   };
 }
 
-/**
- * Panggil API off-chain. `signer` boleh null untuk request publik (hanya
- * /api/health yang publik; endpoint lain akan menjawab 401 dengan jelas).
- */
 export async function apiFetch(config, signer, method, path, body) {
   const base = config.apiBase || "http://127.0.0.1:8089";
   const headers = { "content-type": "application/json" };
@@ -63,7 +42,6 @@ export async function apiFetch(config, signer, method, path, body) {
   try {
     data = await res.json();
   } catch (_) {
-    /* respons tanpa body */
   }
   if (!res.ok) {
     const e = new Error(data?.error || `HTTP ${res.status}`);
@@ -74,7 +52,6 @@ export async function apiFetch(config, signer, method, path, body) {
   return data;
 }
 
-/** Sederhana: alamat ini ber-role apa menurut kontrak? */
 export function bolehNulis(role) {
   return role === "ADMIN" || role === "SOC_ANALYST";
 }

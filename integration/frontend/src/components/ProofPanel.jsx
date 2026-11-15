@@ -3,18 +3,9 @@ import { fmtTime } from "../lib/format.js";
 import { merkleRootOfLines, parseIndexNdjson, slugLogId, splitLines, verifyLineProof } from "../lib/merkle.js";
 import { shortHash } from "../lib/format.js";
 
-/**
- * Panel bukti: verifikasi Merkle proof tiap baris DI BROWSER terhadap Merkle Root
- * on-chain. Tidak memakai backend untuk memutuskan apa pun — file batch dan
- * artefak bukti cuma "bahan mentah", yang menentukan adalah root dari kontrak.
- */
 export default function ProofPanel({ config, contract, logId, entry, onEvent }) {
   const [state, setState] = useState({ status: "idle" });
 
-  // Hasil verifikasi berlaku untuk file batch PADA SAAT itu. Begitu log yang
-  // dipilih berganti, atau backend sudah memeriksa ulang log ini (verifiedAt
-  // berubah — bisa jadi karena ketahuan diubah), hasil lama dibuang supaya
-  // tidak ada klaim "✅ terbukti" yang sebenarnya sudah basi.
   const entryCheck = entry ? `${entry.verifiedAt || 0}|${entry.isTampered ? 1 : 0}` : "";
   useEffect(() => {
     setState({ status: "idle" });
@@ -55,7 +46,6 @@ export default function ProofPanel({ config, contract, logId, entry, onEvent }) 
         perLine = perLine.filter((l) => !l.ok).slice(0, 5);
       }
 
-      // Cek ulang GRATIS dari browser: hitung root file batch sekarang, tanya kontrak.
       let viewResult = null;
       let browserRoot = null;
       if (lines) {

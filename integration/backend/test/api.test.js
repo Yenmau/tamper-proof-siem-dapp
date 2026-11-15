@@ -1,8 +1,3 @@
-// integration/backend/test/api.test.js
-//
-// Unit test untuk API off-chain — bagian yang MURNI (tanpa jaringan & MongoDB):
-// format pesan login, verifikasi tanda tangan, umur tanda tangan, nonce sekali
-// pakai, dan matriks izin role. Jalankan: npm run test:api
 
 const assert = require("assert");
 const { ethers } = require("ethers");
@@ -44,7 +39,6 @@ async function main() {
   const pesan = auth.buildMessage({ wallet: alamat, ts: nowSec, nonce });
   const tandaTangan = await wallet.signMessage(pesan);
 
-  // --- format pesan -------------------------------------------------------
   uji("buildMessage menghasilkan format yang bisa dibaca ulang", () => {
     const p = auth.parseMessage(pesan);
     assert.ok(p, "parseMessage harus berhasil");
@@ -76,17 +70,15 @@ async function main() {
     assert.strictEqual(auth.decodeMessage(undefined), null);
   });
 
-  // --- umur tanda tangan --------------------------------------------------
   uji("isFresh: sekarang lolos, 10 menit lalu ditolak, masa depan jauh ditolak", () => {
     assert.strictEqual(auth.isFresh(nowSec, nowSec), true);
     assert.strictEqual(auth.isFresh(nowSec - 299, nowSec), true);
     assert.strictEqual(auth.isFresh(nowSec - 301, nowSec), false);
     assert.strictEqual(auth.isFresh(nowSec + 600, nowSec), false);
-    assert.strictEqual(auth.isFresh(nowSec + 10, nowSec), true); // toleransi jam bergeser
+    assert.strictEqual(auth.isFresh(nowSec + 10, nowSec), true);
     assert.strictEqual(auth.isFresh(NaN, nowSec), false);
   });
 
-  // --- verifikasi tanda tangan -------------------------------------------
   uji("tanda tangan sah diterima", () => {
     const r = auth.verifySignature({ message: pesan, signature: tandaTangan, wallet: alamat, nowSec });
     assert.strictEqual(r.ok, true, r.reason);
@@ -126,7 +118,6 @@ async function main() {
     assert.strictEqual(auth.verifySignature({ message: pesan, signature: tandaTangan, wallet: "bukan", nowSec }).reason, "alamat_tidak_valid");
   });
 
-  // --- matriks izin -------------------------------------------------------
   uji("roleAllows: ADMIN penuh, SOC_ANALYST tanpa delete, AUDITOR read-only", () => {
     assert.strictEqual(auth.roleAllows("read", "ADMIN"), true);
     assert.strictEqual(auth.roleAllows("write", "ADMIN"), true);
@@ -152,7 +143,6 @@ async function main() {
     assert.strictEqual(auth.normalizeWallet(""), null);
   });
 
-  // --- nonce sekali pakai -------------------------------------------------
   uji("nonce tidak bisa dipakai dua kali", () => {
     const store = auth.createNonceStore();
     assert.strictEqual(store.pakai("n1", nowSec), true);
@@ -164,12 +154,11 @@ async function main() {
     const store = auth.createNonceStore({ maxAgeSec: 10 });
     store.pakai("lama", nowSec - 100);
     assert.strictEqual(store.size(), 1);
-    store.pakai("baru", nowSec); // memicu pembersihan
+    store.pakai("baru", nowSec);
     assert.strictEqual(store.size(), 1, "nonce lama harus ikut terhapus");
     assert.strictEqual(store.pakai("lama", nowSec), true, "nonce lama boleh dipakai lagi setelah kedaluwarsa");
   });
 
-  // --- middleware end-to-end (tanpa HTTP server) --------------------------
   await ujiAsync("middleware: tanpa header -> 401", async () => {
     const mw = auth.requireWallet("write", { roleOf: async () => "ADMIN", nonceStore: auth.createNonceStore() });
     const res = tangkapRes();
@@ -243,7 +232,6 @@ async function main() {
   if (gagal) process.exit(1);
 }
 
-// --- helper tiruan objek Express -------------------------------------------
 function tangkapRes() {
   return {
     statusCode: undefined,
@@ -262,8 +250,6 @@ function tangkapRes() {
 function reqPalsu({ wallet, message, signature }) {
   const headers = {
     "x-wallet": wallet,
-    // Header HTTP tidak boleh berisi baris baru -> dikirim base64, seperti
-    // yang dilakukan klien sungguhan (dashboard & smoke test).
     "x-message": auth.encodeMessage(message),
     "x-signature": signature,
   };

@@ -1,12 +1,4 @@
 #!/bin/sh
-# Tulis config.json dari environment supaya satu image yang sama bisa dipakai
-# untuk chain lokal maupun Sepolia (tanpa build ulang).
-#
-# Alamat kontrak: pakai env CONTRACT_ADDRESS kalau diisi (profil Sepolia);
-# kalau kosong (profil lokal) ambil dari volume /state hasil service `deploy`.
-# Dibaca di sini, bukan di skrip terpisah: entrypoint nginx menjalankan setiap
-# /docker-entrypoint.d/*.sh sebagai proses anak, jadi `export` dari skrip lain
-# tidak sampai ke sini.
 set -e
 
 : "${RPC_URL:=http://127.0.0.1:8545}"
@@ -34,3 +26,4 @@ cat > /usr/share/nginx/html/config.json <<EOF
 EOF
 
 echo "[siem-dashboard] config.json -> RPC ${RPC_URL}, kontrak ${CONTRACT_ADDRESS:-'(kosong)'}, chain ${CHAIN_ID}, API ${API_BASE_URL:-'(kosong)'}"
+

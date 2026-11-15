@@ -1,11 +1,3 @@
-// scripts/deploy.js — deploy SIEMLogger tanpa Remix (opsional)
-//
-// Jalankan:
-//   npx hardhat run scripts/deploy.js --network localhost     (node lokal)
-//   npx hardhat run scripts/deploy.js --network sepolia       (butuh .env)
-//
-// Vincent tetap boleh pakai Remix; skrip ini berguna buat Yasin/Joseph
-// yang mau men-deploy ke node lokal sendiri saat ngembangin.
 
 const { ethers } = require("hardhat");
 

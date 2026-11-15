@@ -1,10 +1,4 @@
 "use strict";
-/**
- * test/batch-queue.test.js — unit test logika antrean collectorService.js
- * ---------------------------------------------------------------------------
- * Murni: tanpa jaringan, tanpa kontrak, tanpa filesystem.
- * Jalankan: npm run test:backend
- */
 
 const assert = require("assert");
 const queue = require("../lib/batch-queue");
@@ -12,9 +6,6 @@ const queue = require("../lib/batch-queue");
 const tests = [];
 const t = (name, fn) => tests.push([name, fn]);
 
-// ---------------------------------------------------------------------------
-// parseIndex
-// ---------------------------------------------------------------------------
 t("parseIndex: baris JSON valid jadi entri, baris kosong dilewati", () => {
   const text = [
     '{"logId":"victim-server/auth-1","file":"auth-1.log","lines":20}',
@@ -48,9 +39,6 @@ t("parseIndex: input kosong/null aman", () => {
   assert.deepStrictEqual(queue.parseIndex(null).entries, []);
 });
 
-// ---------------------------------------------------------------------------
-// pendingRecords
-// ---------------------------------------------------------------------------
 t("pendingRecords: hanya logId yang belum ada di state", () => {
   const entries = [
     { logId: "a", file: "a.log" },
@@ -67,9 +55,6 @@ t("pendingRecords: state kosong → semua entri pending", () => {
   assert.strictEqual(queue.pendingRecords(entries, null).length, 1);
 });
 
-// ---------------------------------------------------------------------------
-// dueVerifications
-// ---------------------------------------------------------------------------
 t("dueVerifications: lewat interval → due, belum lewat → tidak", () => {
   const now = 1_000_000;
   const state = {
@@ -103,9 +88,6 @@ t("dueVerifications: filter logIds membatasi pemeriksaan", () => {
   assert.deepStrictEqual(due.map((d) => d.logId), ["b"]);
 });
 
-// ---------------------------------------------------------------------------
-// update state
-// ---------------------------------------------------------------------------
 t("recordStateUpdate: recordedAt tidak berubah saat update ulang, tampered reset false", () => {
   const prev = { file: "a.log", root: "0x1", recordedAt: 111, lastCheck: 111, tampered: true };
   const next = queue.recordStateUpdate(prev, { file: "a.log", root: "0x2", nowMs: 999 });
@@ -135,9 +117,6 @@ t("summarize: hitung total dan daftar yang tampered", () => {
   assert.deepStrictEqual(queue.summarize(null), { total: 0, tampered: 0, tamperedIds: [] });
 });
 
-// ---------------------------------------------------------------------------
-// Runner
-// ---------------------------------------------------------------------------
 (async () => {
   console.log("\nBatch queue (collectorService) — unit test\n");
   let pass = 0;
@@ -145,10 +124,10 @@ t("summarize: hitung total dan daftar yang tampered", () => {
   for (const [name, fn] of tests) {
     try {
       await fn();
-      console.log("  ✔ " + name);
+      console.log("  [OK] " + name);
       pass++;
     } catch (err) {
-      console.error("  ✘ " + name + "\n      " + (err.message || err));
+      console.error("  [GAGAL] " + name + "\n      " + (err.message || err));
       fail++;
     }
   }

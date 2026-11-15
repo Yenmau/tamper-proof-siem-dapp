@@ -5,7 +5,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /run/sshd /siem-batches /opt/shipper
 
-# User target brute force (password lemah SENGAJA, hanya untuk simulasi)
 RUN useradd -m -s /bin/bash victim && echo "victim:password123" | chpasswd \
     && useradd -m -s /bin/bash admin && echo "admin:admin" | chpasswd
 
@@ -15,3 +14,4 @@ COPY shipper/ /opt/shipper/
 
 EXPOSE 22
 CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/supervisord.conf"]
+

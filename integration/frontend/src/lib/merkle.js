@@ -1,7 +1,3 @@
-// Verifikasi Merkle proof DI BROWSER (WebCrypto SHA-256) — tidak mempercayai
-// backend: patokannya tetap Merkle Root yang tersimpan on-chain.
-// Algoritma harus sama dengan integration/backend/lib/collector-core.js:
-// leaf = sha256(isi baris), parent = sha256(min||max) karena sortPairs: true.
 
 const enc = new TextEncoder();
 
@@ -33,7 +29,6 @@ async function hashPair(a, b) {
   return sha256(buf);
 }
 
-/** Benarkah `line` adalah isi baris yang tersegel di dalam `root`? */
 export async function verifyLineProof(line, proofHex, root) {
   if (typeof line !== "string" || !Array.isArray(proofHex) || proofHex.length === 0) return false;
   let node = await sha256(line);
@@ -41,7 +36,6 @@ export async function verifyLineProof(line, proofHex, root) {
   return toHex(node) === String(root).toLowerCase();
 }
 
-/** Merkle Root dari daftar baris — dipakai untuk mengecek ulang isi file batch. */
 export async function merkleRootOfLines(lines) {
   if (!lines || lines.length === 0) return null;
   let layer = [];
@@ -57,7 +51,6 @@ export async function merkleRootOfLines(lines) {
   return toHex(layer[0]);
 }
 
-/** Sama dengan slugLogId() di collector-core.js — dipakai untuk nama file bukti. */
 export const slugLogId = (logId) =>
   (String(logId).replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "").slice(0, 80) || "log");
 
@@ -70,7 +63,6 @@ export function parseIndexNdjson(text) {
       const obj = JSON.parse(line);
       if (obj && obj.logId && obj.file) out.push(obj);
     } catch (_) {
-      /* baris rusak dilewati */
     }
   }
   return out;

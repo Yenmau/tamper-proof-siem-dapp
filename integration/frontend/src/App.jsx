@@ -15,7 +15,7 @@ export default function App() {
   const [config, setConfig] = useState(null);
   const [contract, setContract] = useState(null);
   const [versiKontrak, setVersiKontrak] = useState(null);
-  const [session, setSession] = useState(null); // { mode, addr, role, read, write, signer }
+  const [session, setSession] = useState(null);
   const [tab, setTab] = useState("dashboard");
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
@@ -31,13 +31,10 @@ export default function App() {
 
   const pushEvent = (kind, text) => setEvents((prev) => [{ kind, text, at: Math.floor(Date.now() / 1000) }, ...prev].slice(0, 100));
 
-  // 1. muat konfigurasi runtime
   useEffect(() => {
     loadConfig().then(setConfig);
   }, []);
 
-  // 2. koneksi HANYA-BACA untuk tabel log + listener event (jalan tanpa wallet).
-  //    Login wallet hanya dibutuhkan untuk menulis, bukan untuk mengawasi.
   useEffect(() => {
     if (!config || !isAddress(config.contractAddress)) return;
     let alive = true;
@@ -47,7 +44,6 @@ export default function App() {
     setContract(c);
     pushEvent("info", `terhubung ke ${config.rpcUrl} · kontrak ${config.contractAddress}`);
 
-    // versi kontrak (VERSION()) — ditampilkan di header, diambil satu kali
     c.VERSION()
       .then((v) => alive && setVersiKontrak(v))
       .catch(() => alive && setVersiKontrak(null));
@@ -102,12 +98,10 @@ export default function App() {
       try {
         listeners.current.forEach(([nama, fn]) => c.off(nama, fn));
       } catch (_) {
-        /* provider sudah tutup */
       }
     };
   }, [config]);
 
-  // 3. judul tab berkedip selama alarm belum ditutup
   useEffect(() => {
     if (!alarm) {
       document.title = "SOC Dashboard — Tamper-Proof SIEM";
@@ -140,17 +134,10 @@ export default function App() {
     pushEvent("info", `export ${rows.length} baris ke CSV`);
   }
 
-  /**
-   * LOGIN.
-   *   - tanpa argumen: pakai MetaMask (bisa kirim transaksi & tanda tangan)
-   *   - { alamat }: masuk hanya-baca sebagai alamat itu (role tetap dibaca dari kontrak)
-   * Alamat tanpa role apa pun (NONE) ditolak, kecuali untuk mode hanya-baca.
-   */
   async function onLogin({ alamat } = {}) {
     setError("");
     if (!isAddress(config.contractAddress)) return { error: "Alamat kontrak belum di-set." };
 
-    // --- mode hanya-baca dengan alamat manual ---
     if (alamat) {
       if (!isAddress(alamat)) return { error: "Alamat tidak valid (format 0x + 40 hex)." };
       const { contract: c } = makeReadOnly(config.rpcUrl, config.contractAddress);
@@ -160,7 +147,6 @@ export default function App() {
       return { ok: true };
     }
 
-    // --- mode wallet (MetaMask) ---
     if (!window.ethereum) {
       return { error: "MetaMask tidak terdeteksi. Pakai tombol 'masuk tanpa wallet' atau pasang MetaMask." };
     }
@@ -189,16 +175,12 @@ export default function App() {
 
   if (!config) return <main className="p-8 text-slate-400">memuat konfigurasi…</main>;
 
-  // Belum login -> halaman login (authentication pakai wallet address)
   if (!session) {
     return (
       <Login
         config={config}
         onLogin={onLogin}
         onSkip={() => {
-          // Registry aset tetap bisa dibaca tanpa login: pakai koneksi hanya-baca yang
-          // sudah dibuat di useEffect di atas. Kalau `read` null, tabel aset selalu
-          // tampil "0 aset" padahal datanya ada on-chain.
           setSession({ mode: "readonly", addr: null, role: "PUBLIK", read: contract, write: null, signer: null });
           pushEvent("info", "masuk tanpa login (hanya-baca)");
         }}

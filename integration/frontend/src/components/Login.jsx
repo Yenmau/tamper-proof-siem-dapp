@@ -1,12 +1,5 @@
 import { useState } from "react";
 
-/**
- * Halaman LOGIN (authentication pakai wallet address).
- *
- * Tidak ada username/password: identitas = alamat wallet, dan "siapa dia"
- * ditentukan oleh role yang tersimpan di SMART CONTRACT. Jadi login di sini
- * benar-benar membaca state blockchain (getRoleName), bukan tabel di database.
- */
 export default function Login({ config, onLogin, onSkip, notice }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");

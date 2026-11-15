@@ -1,17 +1,4 @@
 "use strict";
-/**
- * collector-core.js — utilitas bersama untuk logCollector.js & merkleCollector.js
- * -----------------------------------------------------------------------------
- * Sebelumnya kedua skrip menduplikasi ~60% kode (die, loadAbi, sha256,
- * explainError, connect). Perubahan pada satu skrip tidak ikut ke skrip lain,
- * jadi rawan divergen. Semua bagian yang sama sekarang ada di sini.
- *
- * TIDAK ada perubahan algoritma:
- *   - mode "file"   : logHash = SHA-256 seluruh isi file  (logCollector.js)
- *   - mode "merkle" : logHash = Merkle Root dari hash tiap baris (merkleCollector.js)
- * Keduanya memanggil fungsi kontrak yang sama (`recordLogHash`,
- * `verifyLogIntegrityView`, `verifyLogIntegrity`).
- */
 
 const fs = require("fs");
 const path = require("path");
@@ -19,13 +6,8 @@ const crypto = require("crypto");
 const { ethers } = require("ethers");
 const { MerkleTree } = require("merkletreejs");
 
-// .env dibaca relatif terhadap lokasi skrip (integration/backend/.env), bukan
-// current working directory, supaya skrip bisa dijalankan dari root repo.
 require("dotenv").config({ path: path.join(__dirname, "..", ".env"), quiet: true });
 
-// ---------------------------------------------------------------------------
-// Konfigurasi
-// ---------------------------------------------------------------------------
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 const DEFAULT_ABI_PATH = path.join(REPO_ROOT, "contracts", "SIEMLogger.json");
 
@@ -35,24 +17,18 @@ const PRIVATE_KEY = process.env.PRIVATE_KEY;
 const ABI_PATH = process.env.ABI_PATH || DEFAULT_ABI_PATH;
 const MONGO_URI = (process.env.MONGO_URI || "").trim();
 
-/** Penanda khusus kalau file log sudah tidak ada (dihapus penyerang). */
 const HASH_FILE_MISSING = "0x__LOG_FILE_MISSING__";
-/** Penanda khusus kalau file log ada tapi tidak punya baris berisi. */
 const HASH_FILE_EMPTY = "0x__LOG_FILE_EMPTY__";
 
 const MODE_FILE = "file";
 const MODE_MERKLE = "merkle";
 const MODE_LABEL = { file: "SHA-256 file utuh", merkle: "Merkle Root (hash per baris)" };
 
-/** Sufiks file bukti (Merkle proof) yang ditulis di sebelah file log. */
 const PROOFS_SUFFIX = ".proofs.json";
 const PROOFS_FORMAT = "siem-merkle-proofs/v1";
 
-// ---------------------------------------------------------------------------
-// Util dasar
-// ---------------------------------------------------------------------------
 function die(msg) {
-  console.error("\n❌ " + msg + "\n");
+  console.error("\n[GAGAL] " + msg + "\n");
   process.exit(1);
 }
 
@@ -73,9 +49,6 @@ function argNumber(value, fallback) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-// ---------------------------------------------------------------------------
-// Hashing
-// ---------------------------------------------------------------------------
 function sha256Hex(buf) {
   return "0x" + crypto.createHash("sha256").update(buf).digest("hex");
 }
@@ -85,7 +58,6 @@ function sha256File(filePath) {
   return sha256Hex(fs.readFileSync(filePath));
 }
 
-/** Baris-baris log yang berisi (baris kosong dibuang). null kalau file hilang. */
 function readLogLines(filePath) {
   if (!fs.existsSync(filePath)) return null;
   return fs
@@ -102,13 +74,6 @@ function leafHashHex(line) {
   return "0x" + leafHash(line).toString("hex");
 }
 
-/**
- * Merkle proof untuk SATU baris — jalur sibling hash dari daun sampai root.
- * Bukti ini bisa diverifikasi oleh siapa pun tanpa perlu seluruh file, tanpa
- * MongoDB, dan tanpa mempercayai skrip ini; patokannya Merkle Root on-chain.
- *
- * @returns {string[]} daftar sibling hash (hex). [] kalau baris tidak ada.
- */
 function merkleProofOfLine(lines, index) {
   if (!Array.isArray(lines) || lines.length === 0) return [];
   if (!Number.isInteger(index) || index < 0 || index >= lines.length) return [];
@@ -116,10 +81,6 @@ function merkleProofOfLine(lines, index) {
   return tree.getHexProof(leafHash(lines[index]));
 }
 
-/**
- * Verifikasi: benarkah `line` adalah isi baris yang tersegel di dalam `root`?
- * Ini bukti kriptografis — tidak butuh MongoDB, tidak butuh file asli.
- */
 function verifyLineProof(line, proof, root) {
   if (typeof line !== "string") return false;
   if (!Array.isArray(proof) || proof.length === 0) return false;
@@ -131,11 +92,6 @@ function verifyLineProof(line, proof, root) {
   }
 }
 
-/**
- * Nama file bukti memuat logId juga — satu file log sering dipakai untuk banyak
- * logId (pola rotasi: `auth.log#2026-10-09`, `auth.log#2026-10-10`). Kalau
- * namanya cuma per file, record kedua akan menimpa bukti logId pertama.
- */
 function slugLogId(logId) {
   return (
     String(logId)
@@ -145,15 +101,10 @@ function slugLogId(logId) {
   );
 }
 
-/** Lokasi file bukti untuk pasangan (file log, logId). */
 function proofsPathFor(logFile, logId) {
   return logFile + "." + slugLogId(logId) + PROOFS_SUFFIX;
 }
 
-/**
- * Bangun artefak bukti per baris (hash + proof) untuk sebuah file log.
- * Dipakai `record` supaya buktinya tersimpan selagi file masih asli.
- */
 function buildProofArtifacts(lines, logId, root) {
   const tree = new MerkleTree(lines.map(leafHash), leafHash, { sortPairs: true });
   const computed = tree.getHexRoot();
@@ -176,17 +127,12 @@ function buildProofArtifacts(lines, logId, root) {
   };
 }
 
-/** Tulis artefak ke `<fileLog>.<logId>.proofs.json` (di sebelah file log). */
 function saveProofArtifacts(logFile, artifacts) {
   const target = proofsPathFor(logFile, artifacts.logId);
   fs.writeFileSync(target, JSON.stringify(artifacts, null, 2) + "\n", "utf8");
   return target;
 }
 
-/**
- * Baca artefak: coba Mongo dulu (kalau disediakan `fromDb`), lalu file bukti
- * `<fileLog>.<logId>.proofs.json`. Mengembalikan null kalau tidak ada yang cocok.
- */
 function loadProofArtifacts(logFile, logId, fromDb) {
   if (fromDb && Array.isArray(fromDb.lines) && fromDb.lines.length > 0) {
     return {
@@ -202,33 +148,23 @@ function loadProofArtifacts(logFile, logId, fromDb) {
   if (!fs.existsSync(target)) return null;
   try {
     const parsed = JSON.parse(fs.readFileSync(target, "utf8"));
-    if (parsed && parsed.logId !== logId) return null; // file bukti milik logId lain
+    if (parsed && parsed.logId !== logId) return null;
     return { ...parsed, source: target };
   } catch (_) {
     return null;
   }
 }
 
-/**
- * Merkle Root dari daftar baris. Mengembalikan null kalau tidak ada baris —
- * pemanggil yang memutuskan artinya (lihat hashForMode).
- */
 function merkleRootOfLines(lines) {
   if (!Array.isArray(lines) || lines.length === 0) return null;
   const tree = new MerkleTree(lines.map(leafHash), leafHash, { sortPairs: true });
   const root = tree.getHexRoot();
-  // merkletreejs mengembalikan "0x" (bukan error) untuk pohon kosong; panjang
-  // root yang sah selalu 66 karakter (0x + 32 byte).
   if (typeof root !== "string" || root.length !== 66) {
     die("Merkle Root tidak valid (" + JSON.stringify(root) + ") untuk " + lines.length + " baris.");
   }
   return root;
 }
 
-/**
- * Nilai yang akan dikirim sebagai `logHash` untuk sebuah mode.
- * @returns {{hash: string, detail: string, lines: string[]|null, missing: boolean, empty: boolean}}
- */
 function hashForMode(mode, filePath) {
   if (!fs.existsSync(filePath)) {
     return { hash: HASH_FILE_MISSING, detail: "file log tidak ada di server", lines: null, missing: true, empty: false };
@@ -261,9 +197,6 @@ function hashForMode(mode, filePath) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Blockchain
-// ---------------------------------------------------------------------------
 function loadAbi() {
   if (!fs.existsSync(ABI_PATH)) die("File ABI tidak ditemukan: " + ABI_PATH);
   return JSON.parse(fs.readFileSync(ABI_PATH, "utf8"));
@@ -278,11 +211,6 @@ async function connect() {
   return { provider, wallet, contract };
 }
 
-/**
- * Koneksi HANYA-BACA: cukup provider + alamat kontrak, TIDAK butuh private key.
- * Dipakai mode `prove` (verifikasi bukti) supaya auditor bisa memverifikasi
- * tanpa memegang kunci apa pun.
- */
 async function connectReadOnly() {
   if (!CONTRACT_ADDRESS) die("ENV CONTRACT_ADDRESS belum di-set (lihat integration/backend/.env).");
   const provider = new ethers.JsonRpcProvider(RPC_URL);
@@ -290,7 +218,6 @@ async function connectReadOnly() {
   return { provider, contract };
 }
 
-/** Entri log on-chain lengkap (null kalau logId belum terdaftar). */
 async function onChainEntry(contract, logId) {
   try {
     const e = await contract.getLogEntry(logId);
@@ -306,15 +233,6 @@ async function onChainEntry(contract, logId) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Batch (recordLogHashBatch)
-// ---------------------------------------------------------------------------
-/**
- * Manifest = file teks berisi satu entri per baris: `<logId> <path file log>`.
- * Baris kosong dan baris berawalan `#` diabaikan.
- *
- * @returns {{logId: string, file: string}[]}
- */
 function parseManifest(text) {
   const entries = [];
   String(text)
@@ -338,13 +256,6 @@ function parseManifest(text) {
   return entries;
 }
 
-/**
- * Hitung hash tiap entri manifest dan pisahkan yang bermasalah, TANPA menyentuh
- * jaringan. Entri bermasalah tidak dikirim supaya satu file hilang/kosong tidak
- * menggagalkan seluruh batch (kontrak memakai revert all-or-nothing).
- *
- * @returns {{ok: object[], bad: {logId: string, file: string, reason: string}[]}}
- */
 function prepareBatchEntries(mode, entries) {
   const ok = [];
   const bad = [];
@@ -363,7 +274,6 @@ function prepareBatchEntries(mode, entries) {
   return { ok, bad };
 }
 
-/** Terjemahkan revert custom error jadi pesan yang enak dibaca. */
 function explainError(contract, err) {
   const data = err?.data || err?.info?.error?.data;
   if (data && contract) {
@@ -383,7 +293,6 @@ function explainError(contract, err) {
         return parsed.name + "(" + parsed.args.join(", ") + ")";
       }
     } catch (_) {
-      /* jatuh ke bawah */
     }
   }
   return err?.shortMessage || err?.message || String(err);
@@ -403,28 +312,16 @@ async function roleNameSafe(contract, addr) {
   }
 }
 
-/** Ambil `logHash` yang tersimpan on-chain untuk sebuah logId (null kalau belum ada). */
 async function onChainHashOf(contract, logId) {
   try {
     const status = await contract.getLogStatus(logId);
     const hash = status[0];
     return typeof hash === "string" && hash.length > 0 ? hash : null;
   } catch (_) {
-    return null; // belum terdaftar (LogNotFound)
+    return null;
   }
 }
 
-/**
- * Deteksi "salah skrip": logId ini sebenarnya direkam oleh mode yang lain.
- *
- * Kenapa perlu: mode "file" dan mode "merkle" mengirim nilai berbeda untuk file
- * yang sama, jadi pengecekan silang akan melaporkan TAMPERED palsu — dan
- * `isTampered` on-chain tidak bisa dibalik ke false. Kalau hash on-chain sama
- * dengan hasil hitung mode LAIN untuk file yang sama, kita tahu itu bukan
- * tampering, hanya beda mode → alarm TIDAK dikirim.
- *
- * @returns {Promise<null|{otherMode: string, storedHash: string}>}
- */
 async function detectModeMismatch(contract, logId, filePath, myMode) {
   const storedHash = await onChainHashOf(contract, logId);
   if (!storedHash) return null;

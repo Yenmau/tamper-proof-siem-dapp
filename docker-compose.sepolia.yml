@@ -1,12 +1,3 @@
-# Override HANYA untuk dashboard: mengarahkan halaman SOC (http://127.0.0.1:8088)
-# ke kontrak v4.0 di Sepolia, sementara service lain (chain lokal, collector, mongo,
-# API) tetap berjalan seperti biasa di chain lokal.
-#
-# Pakai:
-#   docker compose -f docker-compose.yml -f docker-compose.sepolia.yml --profile local up -d --no-deps dashboard
-#
-# Kembali ke mode chain lokal (tanpa file ini):
-#   docker compose --profile local up -d --no-deps dashboard
 services:
   dashboard:
     environment:
@@ -16,3 +7,4 @@ services:
       CHAIN_ID: "11155111"
       NETWORK_NAME: Sepolia testnet
       POLL_SECONDS: "8"
+

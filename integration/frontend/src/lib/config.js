@@ -1,5 +1,3 @@
-// Konfigurasi runtime: dibaca dari /config.json (ditulis saat container start),
-// bisa ditimpa alamat kontrak dari localStorage untuk kerja lokal tanpa compose.
 export const DEFAULT_CONFIG = {
   rpcUrl: "http://127.0.0.1:8545",
   contractAddress: "",
@@ -17,7 +15,6 @@ export async function loadConfig() {
     const res = await fetch("config.json", { cache: "no-store" });
     if (res.ok) fromFile = await res.json();
   } catch (_) {
-    /* config.json tidak ada (mode dev) -> pakai default */
   }
   const override = typeof localStorage !== "undefined" ? localStorage.getItem(LS_KEY) : null;
   const cfg = { ...DEFAULT_CONFIG, ...fromFile };
@@ -30,7 +27,6 @@ export function saveContractAddress(address) {
     if (address) localStorage.setItem(LS_KEY, address);
     else localStorage.removeItem(LS_KEY);
   } catch (_) {
-    /* localStorage bisa diblokir; abaikan */
   }
 }
 

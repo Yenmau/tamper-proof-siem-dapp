@@ -1,159 +1,64 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-/**
- * @title  SIEMLogger
- * @author Vincent Tiono — Smart Contract Developer / Web3 Lead
- * @notice Registry "sidik jari" (hash) file log server di blockchain.
- *         Hash asli dikunci on-chain. Kalau log di server diubah/dihapus oleh
- *         penyerang, hash server tidak akan cocok lagi dengan hash on-chain ->
- *         event `TamperingDetected` dipancarkan -> frontend menaikkan alarm.
- *
- * @dev    VERSI 4.0
- *
- *         == RBAC 3 ROLE (sesuai pembagian tugas tim) ==
- *         Role          Tulis log   Verifikasi(+alarm)   Aset: create/update   Aset: delete   Kelola role
- *         -----------------------------------------------------------------------------------------------
- *         ADMIN            ya              ya                    ya                ya            ya
- *         SOC_ANALYST      ya              ya                    ya                tidak         tidak
- *         AUDITOR          tidak      tidak (hanya view)        tidak              tidak         tidak
- *         (NONE / publik)  tidak      tidak (hanya view)        tidak              tidak         tidak
- *
- *         == DUA JENIS DATA ON-CHAIN ==
- *         1. LogEntry (registry log, v1.0-v3.0) — SEKALI TULIS, sengaja TIDAK bisa
- *            di-update/delete: kalau hash bisa ditimpa, penyerang yang berhasil
- *            masuk ke akun admin bisa menghapus jejaknya. Immutability = inti
- *            nilai keamanan proyek ini.
- *         2. Asset (registry aset/insiden, v4.0) — CRUD PENUH (create, view,
- *            update, delete) karena aset/inventaris memang berubah (pindah
- *            lokasi, ganti kategori, dinonaktifkan). RBAC tetap berlaku:
- *            create/update = ADMIN + SOC_ANALYST, delete = ADMIN saja.
- *            Penghapusan tetap meninggalkan jejak permanen lewat event
- *            `AssetDeleted` di blockchain.
- *
- *         Alasan desain: AUDITOR sengaja dibuat READ-ONLY. Prinsip pemisahan
- *         tugas (separation of duties) — auditor tidak boleh punya kemampuan
- *         mengubah data yang dia audit, kalau tidak hasil auditnya tidak
- *         bernilai. Auditor tetap bisa memakai `verifyLogIntegrityView`
- *         (gratis, tidak mengubah state) untuk menguji integritas sendiri.
- *
- *         == KOMPATIBILITAS ==
- *         Tiga fungsi inti dari v1.0 TIDAK berubah nama & signature:
- *           recordLogHash(string,string), verifyLogIntegrity(string,string),
- *           getLogStatus(string)
- *         sehingga kode backend (Yasin) & frontend (Joseph) tetap jalan.
- *         Detail lengkap riwayat perubahan ada di CHANGELOG.md.
- */
 contract SIEMLogger {
-    /// @notice Versi kontrak, bisa ditampilkan di UI.
     string public constant VERSION = "4.0.0";
 
-    // ---------------------------------------------------------------------
-    // RBAC — Role-Based Access Control
-    // ---------------------------------------------------------------------
-
-    /// @notice Urutan enum WAJIB tetap (nilai tersimpan on-chain).
-    ///         NONE = tanpa akses tulis, tapi tetap bisa membaca data publik.
     enum Role { NONE, AUDITOR, SOC_ANALYST, ADMIN }
 
-    // ---------------------------------------------------------------------
-    // Struktur data
-    // ---------------------------------------------------------------------
-
-    /// @dev `logHash` (string) + `timestamp` (uint256) masing-masing 1 slot.
-    ///      `verifiedAt` + `isTampered` + `recordedBy` dipack jadi 1 slot
-    ///      (8 + 1 + 20 = 29 byte) -> hemat gas vs 3 slot terpisah.
     struct LogEntry {
-        string  logHash;     // hash SHA-256 asli (hex string) saat didaftarkan
-        uint256 timestamp;   // kapan didaftarkan (block.timestamp)
-        uint64  verifiedAt;  // kapan terakhir diverifikasi (0 = belum pernah)
-        bool    isTampered;  // true kalau PERNAH terdeteksi tidak cocok
-        address recordedBy;  // akun yang mendaftarkan entri ini
+        string  logHash;
+        uint256 timestamp;
+        uint64  verifiedAt;
+        bool    isTampered;
+        address recordedBy;
     }
 
-    /// @dev Registry aset/insiden (v4.0). Berbeda dari LogEntry: entri ini
-    ///      BOLEH di-update dan di-delete (lihat catatan di header).
     struct Asset {
-        string  name;       // nama aset (wajib, tidak boleh kosong)
-        string  category;   // kategori bebas (mis. "server", "database", "endpoint")
-        string  location;   // lokasi/hostname
-        uint64  createdAt;  // + updatedAt + exists dipack: 8+8+1 = 17 byte = 1 slot
+        string  name;
+        string  category;
+        string  location;
+        uint64  createdAt;
         uint64  updatedAt;
         bool    exists;
         address createdBy;
         address updatedBy;
     }
 
-    // ---------------------------------------------------------------------
-    // Storage
-    // ---------------------------------------------------------------------
-
-    /// @notice Owner / super-admin (akun yang mendeploy). Tidak bisa dicabut.
     address public admin;
 
-    /// @notice Jumlah akun ber-role ADMIN (read-only helper).
     uint256 public adminCount;
 
-    /// @notice Role setiap alamat. Default = Role.NONE.
     mapping(address => Role) public roles;
 
-    /// @notice Registry log: logId => LogEntry.
     mapping(string => LogEntry) public logs;
 
-    /// @dev Registry aset: assetId => Asset (v4.0). Private — dibaca lewat
-    ///      `getAsset` / `assetExists` supaya ABI-nya tetap rapi.
     mapping(string => Asset) private _assets;
 
     address[] private _adminList;
     string[]  private _logIds;
     string[]  private _assetIds;
-    /// @dev 1-based; 0 = tidak ada. Dipakai supaya penghapusan O(1) (swap-pop),
-    ///      bukan mencari di dalam array string.
     mapping(string => uint256) private _assetIndex;
 
-    // ---------------------------------------------------------------------
-    // Events
-    // ---------------------------------------------------------------------
-
-    /// @notice Dipancarkan tiap kali hash log baru dikunci on-chain.
-    /// @dev    `logId` TIDAK di-index supaya isinya bisa dibaca langsung dari
-    ///         event (indexed string hanya menyimpan hash-nya, tidak bisa
-    ///         di-decode ulang) — penting untuk ditampilkan di dashboard SOC.
-    ///         Biaya gas-nya kecil (data log 8 gas/byte, bukan 20k/slot).
     event LogRecorded(string logId, string logHash, uint256 timestamp);
 
-    /// @notice Dipancarkan tiap kali verifikasi dijalankan (cocok atau tidak).
     event LogVerified(string logId, string currentHash, bool isMatch, uint256 timestamp);
 
-    /// @notice ⚠️ ALARM. Dipancarkan saat hash server != hash on-chain.
-    ///         Ini event yang didengarkan frontend untuk menaikkan alarm.
-    ///         `logId` sengaja tidak di-index agar bisa ditampilkan langsung.
     event TamperingDetected(string logId, string expectedHash, string actualHash);
 
-    /// @notice Registry aset (v4.0) — CRUD penuh, tapi jejaknya permanen.
-    /// @dev    `assetId` sengaja TIDAK di-index (sama seperti `logId`) supaya
-    ///         isinya bisa dibaca langsung dari payload event di dashboard.
     event AssetCreated(string assetId, string name, string category, address by, uint256 timestamp);
     event AssetUpdated(string assetId, string name, string category, address by, uint256 timestamp);
-    /// @notice Data aset dihapus dari state, tapi kejadian penghapusannya
-    ///         tercatat permanen di sini — inilah bedanya dengan database biasa.
     event AssetDeleted(string assetId, address by, uint256 timestamp);
 
-    /// @notice Perubahan role (v3.0 — menggantikan AdminAdded/AdminRemoved).
     event RoleAssigned(address indexed account, Role role);
     event RoleRevoked(address indexed account, Role previousRole);
 
-    /// @notice Dipertahankan dari v2.0 supaya listener lama tetap jalan.
     event AdminAdded(address indexed account);
     event AdminRemoved(address indexed account);
 
-    // ---------------------------------------------------------------------
-    // Custom errors — lebih murah dari `require` dengan string
-    // ---------------------------------------------------------------------
-
     error NotOwner();
     error NotAdmin();
-    error NotOperator();      // butuh SOC_ANALYST atau ADMIN
+    error NotOperator();
     error InvalidAddress();
     error InvalidRole();
     error SameRole(address account, Role role);
@@ -167,31 +72,21 @@ contract SIEMLogger {
     error AssetAlreadyExists(string assetId);
     error AssetNotFound(string assetId);
 
-    // ---------------------------------------------------------------------
-    // Modifier
-    // ---------------------------------------------------------------------
-
     modifier onlyOwner() {
         if (msg.sender != admin) revert NotOwner();
         _;
     }
 
-    /// @notice Butuh role ADMIN (boleh kelola role).
     modifier onlyAdmin() {
         if (roles[msg.sender] != Role.ADMIN) revert NotAdmin();
         _;
     }
 
-    /// @notice Butuh SOC_ANALYST atau ADMIN (boleh menulis state log).
     modifier onlyOperator() {
         Role r = roles[msg.sender];
         if (r != Role.SOC_ANALYST && r != Role.ADMIN) revert NotOperator();
         _;
     }
-
-    // ---------------------------------------------------------------------
-    // Constructor
-    // ---------------------------------------------------------------------
 
     constructor() {
         admin = msg.sender;
@@ -202,16 +97,10 @@ contract SIEMLogger {
         emit AdminAdded(msg.sender);
     }
 
-    // ---------------------------------------------------------------------
-    // Manajemen role (v3.0)
-    // ---------------------------------------------------------------------
-
-    /// @notice Set role sebuah akun. Hanya ADMIN yang boleh.
-    ///         Owner sendiri tidak bisa diubah (CannotChangeOwner).
     function setRole(address _account, Role _role) public onlyAdmin {
         if (_account == address(0)) revert InvalidAddress();
         if (_account == admin) revert CannotChangeOwner();
-        if (_role == Role.NONE) revert InvalidRole(); // pakai removeRole()
+        if (_role == Role.NONE) revert InvalidRole();
 
         Role old = roles[_account];
         if (old == _role) revert SameRole(_account, _role);
@@ -219,7 +108,6 @@ contract SIEMLogger {
         _setRole(_account, old, _role);
     }
 
-    /// @notice Cabut seluruh akses tulis sebuah akun (kembali jadi NONE).
     function removeRole(address _account) public onlyAdmin {
         if (_account == address(0)) revert InvalidAddress();
         if (_account == admin) revert CannotChangeOwner();
@@ -230,22 +118,18 @@ contract SIEMLogger {
         _setRole(_account, old, Role.NONE);
     }
 
-    /// @notice Alias dari setRole(account, ADMIN) — nama lama dari v2.0.
     function addAdmin(address _account) external onlyAdmin {
         setRole(_account, Role.ADMIN);
     }
 
-    /// @notice Alias dari removeRole(account) — nama lama dari v2.0.
     function removeAdmin(address _account) external onlyAdmin {
         removeRole(_account);
     }
 
-    /// @notice Shortcut: jadikan akun SOC Analyst.
     function addAnalyst(address _account) external onlyAdmin {
         setRole(_account, Role.SOC_ANALYST);
     }
 
-    /// @notice Shortcut: jadikan akun Auditor (read-only).
     function addAuditor(address _account) external onlyAdmin {
         setRole(_account, Role.AUDITOR);
     }
@@ -276,42 +160,27 @@ contract SIEMLogger {
         emit RoleAssigned(_account, _new);
     }
 
-    // ---------------------------------------------------------------------
-    // Query role
-    // ---------------------------------------------------------------------
-
-    /// @notice Nama role dalam teks (untuk ditampilkan di dasbor SOC).
     function getRoleName(address _account) external view returns (string memory) {
         return _roleName(roles[_account]);
     }
 
-    /// @notice true kalau akun ber-role ADMIN.
     function isAdmin(address _account) external view returns (bool) {
         return roles[_account] == Role.ADMIN;
     }
 
-    /// @notice true kalau akun boleh menulis state log (ANALYST atau ADMIN).
     function isOperator(address _account) external view returns (bool) {
         Role r = roles[_account];
         return r == Role.SOC_ANALYST || r == Role.ADMIN;
     }
 
-    /// @notice true kalau akun punya role apa pun (termasuk AUDITOR).
     function hasRole(address _account) external view returns (bool) {
         return roles[_account] != Role.NONE;
     }
 
-    /// @notice Daftar semua akun ber-role ADMIN.
     function getAdmins() external view returns (address[] memory) {
         return _adminList;
     }
 
-    // ---------------------------------------------------------------------
-    // FUNGSI 1 — recordLogHash : kunci hash log ke blockchain
-    // ---------------------------------------------------------------------
-
-    /// @notice Simpan hash log asli pertama kali ke blockchain.
-    /// @dev    Sekali terdaftar, logId tidak bisa ditimpa (immutable).
     function recordLogHash(string calldata _logId, string calldata _logHash)
         external
         onlyOperator
@@ -319,8 +188,6 @@ contract SIEMLogger {
         _record(_logId, _logHash);
     }
 
-    /// @notice Impor banyak log sekaligus. Biaya dasar 1 transaksi (±21k gas)
-    ///         dibagi ke semua item -> jauh lebih murah daripada satu-satu.
     function recordLogHashBatch(
         string[] calldata _ids,
         string[] calldata _hashes
@@ -347,16 +214,6 @@ contract SIEMLogger {
         emit LogRecorded(_logId, _logHash, block.timestamp);
     }
 
-    // ---------------------------------------------------------------------
-    // FUNGSI 2 — verifyLogIntegrity : bandingkan hash server vs on-chain
-    // ---------------------------------------------------------------------
-
-    /// @notice Bandingkan hash log server saat ini dengan hash asli on-chain.
-    ///         Kalau beda -> tandai isTampered + pancarkan TamperingDetected.
-    /// @dev    Butuh role SOC_ANALYST atau ADMIN, karena fungsi ini MENULIS
-    ///         state. Untuk pengecekan gratis tanpa role, pakai
-    ///         `verifyLogIntegrityView` (view, boleh siapa saja).
-    /// @return true kalau hash masih cocok (log aman), false kalau di-tamper.
     function verifyLogIntegrity(
         string calldata _logId,
         string calldata _currentServerHash
@@ -377,11 +234,6 @@ contract SIEMLogger {
         return isMatch;
     }
 
-    /// @notice Versi GRATIS (view) dari verifikasi — tidak mengubah state,
-    ///         tidak butuh gas, dan TIDAK butuh role (publik/AUDITOR boleh).
-    ///         Cocok dipanggil frontend/backend berulang kali untuk
-    ///         menampilkan status "AMAN / TAMPERED" secara real-time.
-    /// @return true kalau hash masih cocok.
     function verifyLogIntegrityView(
         string calldata _logId,
         string calldata _currentServerHash
@@ -391,12 +243,6 @@ contract SIEMLogger {
         return _hashesEqual(originalHash, _currentServerHash);
     }
 
-    // ---------------------------------------------------------------------
-    // FUNGSI 3 — getLogStatus : ambil status log
-    // ---------------------------------------------------------------------
-
-    /// @notice Ambil (hash asli, waktu daftar, status tampered) sebuah log.
-    ///         Signature & urutan return dipertahankan sama seperti v1.0.
     function getLogStatus(string calldata _logId)
         external
         view
@@ -407,7 +253,6 @@ contract SIEMLogger {
         return (entry.logHash, entry.timestamp, entry.isTampered);
     }
 
-    /// @notice Versi lengkap dari getLogStatus (termasuk field v2.0).
     function getLogEntry(string calldata _logId)
         external
         view
@@ -430,10 +275,6 @@ contract SIEMLogger {
         );
     }
 
-    // ---------------------------------------------------------------------
-    // Helper listing — supaya UI bisa menampilkan semua log
-    // ---------------------------------------------------------------------
-
     function getLogCount() external view returns (uint256) {
         return _logIds.length;
     }
@@ -446,11 +287,6 @@ contract SIEMLogger {
         return _logIds[_index];
     }
 
-    // ---------------------------------------------------------------------
-    // REGISTRY ASET (v4.0) — CRUD on-chain penuh
-    // ---------------------------------------------------------------------
-
-    /// @notice CREATE — daftarkan aset baru. ADMIN atau SOC_ANALYST.
     function createAsset(
         string calldata _assetId,
         string calldata _name,
@@ -473,12 +309,11 @@ contract SIEMLogger {
         });
 
         _assetIds.push(_assetId);
-        _assetIndex[_assetId] = _assetIds.length; // 1-based
+        _assetIndex[_assetId] = _assetIds.length;
 
         emit AssetCreated(_assetId, _name, _category, msg.sender, block.timestamp);
     }
 
-    /// @notice UPDATE — ubah nama/kategori/lokasi aset. ADMIN atau SOC_ANALYST.
     function updateAsset(
         string calldata _assetId,
         string calldata _name,
@@ -498,19 +333,16 @@ contract SIEMLogger {
         emit AssetUpdated(_assetId, _name, _category, msg.sender, block.timestamp);
     }
 
-    /// @notice DELETE — hapus aset dari state. Hanya ADMIN.
-    /// @dev    Dihapus betulan (`delete`), bukan sekadar ditandai — tapi event
-    ///         `AssetDeleted` tetap tersimpan permanen di blockchain.
     function deleteAsset(string calldata _assetId) external onlyAdmin {
         if (!_assets[_assetId].exists) revert AssetNotFound(_assetId);
 
         delete _assets[_assetId];
 
-        uint256 idx = _assetIndex[_assetId]; // 1-based
+        uint256 idx = _assetIndex[_assetId];
         uint256 len = _assetIds.length;
         if (idx != 0 && idx <= len) {
             _assetIds[idx - 1] = _assetIds[len - 1];
-            _assetIndex[_assetIds[idx - 1]] = idx; // perbaiki index yang dipindah
+            _assetIndex[_assetIds[idx - 1]] = idx;
             _assetIds.pop();
         }
         delete _assetIndex[_assetId];
@@ -518,11 +350,6 @@ contract SIEMLogger {
         emit AssetDeleted(_assetId, msg.sender, block.timestamp);
     }
 
-    // ---------------------------------------------------------------------
-    // Query aset (view, gratis)
-    // ---------------------------------------------------------------------
-
-    /// @notice VIEW — ambil satu aset. Revert `AssetNotFound` kalau tidak ada.
     function getAsset(string calldata _assetId)
         external
         view
@@ -541,7 +368,6 @@ contract SIEMLogger {
         return (a.name, a.category, a.location, a.createdAt, a.updatedAt, a.createdBy, a.updatedBy);
     }
 
-    /// @notice true kalau aset terdaftar (dipakai UI sebelum menampilkan detail).
     function assetExists(string calldata _assetId) external view returns (bool) {
         return _assets[_assetId].exists;
     }
@@ -558,15 +384,10 @@ contract SIEMLogger {
         return _assetIds[_index];
     }
 
-    /// @notice Helper untuk UI: apakah akun ini boleh menambah/mengubah aset?
     function canManageAssets(address _account) external view returns (bool) {
         Role r = roles[_account];
         return r == Role.SOC_ANALYST || r == Role.ADMIN;
     }
-
-    // ---------------------------------------------------------------------
-    // Internal
-    // ---------------------------------------------------------------------
 
     function _hashesEqual(string memory _a, string memory _b) private pure returns (bool) {
         return keccak256(abi.encodePacked(_a)) == keccak256(abi.encodePacked(_b));

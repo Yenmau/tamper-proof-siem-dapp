@@ -4,21 +4,6 @@ import { fmtTime, shortAddr } from "../lib/format.js";
 
 const KOSONG = { walletAddress: "", name: "", email: "", department: "", team: "Blue Team", notes: "" };
 
-/**
- * DATA USER (OFF-CHAIN) — "Off-chain State Management" di MongoDB.
- *
- *   INSERT : POST   /api/users
- *   VIEW   : GET    /api/users, /api/users/:wallet
- *   UPDATE : PUT    /api/users/:wallet
- *   DELETE : DELETE /api/users/:wallet   (hanya ADMIN)
- *
- * Kenapa off-chain? Nama, email, dan data pribadi tidak layak disimpan di
- * blockchain: mahal (gas) dan terbuka untuk siapa saja. Yang tetap on-chain
- * adalah pembuktian integritas (hash log), registry aset, dan ROLE akun —
- * jadi otorisasi di sini tetap membaca kebenaran dari kontrak, bukan dari
- * database. Setiap request ditandatangani wallet (personal_sign) supaya API
- * tahu siapa yang memanggil.
- */
 export default function UsersPanel({ config, session, onEvent }) {
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState(KOSONG);
