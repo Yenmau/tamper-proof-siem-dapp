@@ -16,6 +16,8 @@ di MongoDB karena tidak layak dibayar gas dan tidak perlu publik.
 
 📍 **Status terkini, bukti uji, dan sisa pekerjaan: [`STATUS.md`](STATUS.md)**
 
+📖 **Panduan penggunaan aplikasi (untuk penilai): [`CARA-PAKAI.md`](CARA-PAKAI.md)** — versi PDF: [`docs/CARA-PAKAI-Tamper-Proof-SIEM.pdf`](docs/CARA-PAKAI-Tamper-Proof-SIEM.pdf)
+
 ---
 
 ## 📋 Peta Requirement Tugas → Implementasi
